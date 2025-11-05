@@ -1,36 +1,71 @@
-# CSV files - exclude all data files
-*.csv
-**/*.csv
-
-# Python cache files
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
+*.pyo
 
-# IDE files
-.vscode/
+# Virtual environments
+.venv/
+venv/
+.env
+.env.*
+
+# Editors/IDE
 .idea/
-*.swp
-*.swo
-*~
+.vscode/
+*.iml
 
-# OS files
+# OS junk
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# Log files
+# Test/coverage caches
+.pytest_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs
 *.log
+logs/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Downloader outputs (football-data)
+football-data/all-euro-football/*.csv
+football-data/*.zip
+
+# Project runtime outputs (data)
+# Keep documented samples, ignore generated artifacts
+data/analysis_results_*.json
+data/full_league_suggestions_*.json
+data/parsed_fixtures_suggestions_*.json
+data/suggestion_*.json
+data/todays_fixtures_*.csv
+data/todays_fixtures_*.json
+data/home_away_team_strengths*.csv
+data/league_data_*.csv
+data/pickMatch_*.csv
+data/bet_history.csv
+data/last_teams.json
+data/*.log
+
+# Allow sample result CSVs used in docs
+!data/sample_results_*.csv
+
+# Temp and scratch
+.tmp/
 tmp/
+tmp/**
 
-# Zip files
-*.zip
+# Visual outputs
+visuals/**/*.png
+visuals/**/*.csv
 
-# Temporary files
-*.tmp
-*.temp

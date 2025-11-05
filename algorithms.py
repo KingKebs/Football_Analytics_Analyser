@@ -191,7 +191,7 @@ def score_probability_matrix(xg_home: float, xg_away: float, max_goals: int = 6)
 
 # --- ALGORITHM 5: MARKET PROBABILITY EXTRACTION ---
 
-def extract_markets_from_score_matrix(mat: pd.DataFrame, min_confidence: float = 0.6) -> Dict[str, Dict[str, float]]:
+def extract_markets_from_score_matrix(mat: pd.DataFrame, min_confidence: float = 0.6, external_probs: Dict[str, Dict[str, float]] = None) -> Dict[str, Dict[str, float]]:
     """
     Algorithm 5: Market Probability Extraction with Confidence Filtering
 
@@ -206,6 +206,7 @@ def extract_markets_from_score_matrix(mat: pd.DataFrame, min_confidence: float =
     Args:
         mat: Score probability matrix from Algorithm 4
         min_confidence: Minimum prob for market selection (default 0.6)
+        external_probs: Optional externally computed probabilities to override specific markets e.g., {'1X2': {'Home': pH, 'Draw': pD, 'Away': pA}}
 
     Returns:
         Dictionary of market probabilities
@@ -253,6 +254,20 @@ def extract_markets_from_score_matrix(mat: pd.DataFrame, min_confidence: float =
                'Under2.5': under_2_5, 'Over2.5': over_2_5},
         'BTTS': {'Yes': btts_yes, 'No': btts_no}
     }
+
+    # If external 1X2 probabilities are provided, override the Poisson-derived 1X2
+    if external_probs and isinstance(external_probs, dict) and '1X2' in external_probs:
+        ext = external_probs.get('1X2') or {}
+        pH = float(ext.get('Home', 0.0))
+        pD = float(ext.get('Draw', 0.0))
+        pA = float(ext.get('Away', 0.0))
+        # Clamp and renormalize to be safe
+        pH = min(max(pH, 0.001), 0.999)
+        pD = min(max(pD, 0.001), 0.999)
+        pA = min(max(pA, 0.001), 0.999)
+        s = pH + pD + pA
+        if s > 0:
+            markets['1X2'] = {'Home': pH / s, 'Draw': pD / s, 'Away': pA / s}
 
     # Filter and log high-confidence markets
     selected = {}
@@ -572,6 +587,233 @@ def estimate_corners_and_cards(xg_home: float, xg_away: float) -> Dict[str, floa
         'EstimatedCards': est_cards
     }
 
+
+# --- RATING MODEL: GOAL-SUPREMACY DRIVEN PROBABILITIES ---
+
+def compute_goal_supremacy_rating(history_df: pd.DataFrame, team: str, last_n: int = 6) -> float:
+    """Compute recent goal-supremacy rating for a team over the last N matches.
+    rating_team = sum(goals_for - goals_against) over last N matches the team played.
+    Returns 0.0 if no history is available.
+    """
+    if history_df is None or history_df.empty or not team:
+        return 0.0
+    df = history_df.copy()
+    # Normalize column names (robust to variants)
+    rename_map = {}
+    for c in df.columns:
+        lc = str(c).lower()
+        if lc in ('hometeam', 'home_team'):
+            rename_map[c] = 'HomeTeam'
+        elif lc in ('awayteam', 'away_team'):
+            rename_map[c] = 'AwayTeam'
+        elif lc in ('fthg', 'homegoals'):
+            rename_map[c] = 'FTHG'
+        elif lc in ('ftag', 'awaygoals'):
+            rename_map[c] = 'FTAG'
+        elif lc == 'date' and c != 'Date':
+            rename_map[c] = 'Date'
+    if rename_map:
+        df = df.rename(columns=rename_map)
+    if not set(['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']).issubset(df.columns):
+        return 0.0
+
+    df['FTHG'] = pd.to_numeric(df['FTHG'], errors='coerce')
+    df['FTAG'] = pd.to_numeric(df['FTAG'], errors='coerce')
+    if 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
+        df = df.sort_values('Date', na_position='last')
+
+    played = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].copy()
+    if played.empty:
+        return 0.0
+
+    last = played.tail(last_n)
+    diffs = []
+    for _, row in last.iterrows():
+        if row['HomeTeam'] == team:
+            gf, ga = row['FTHG'], row['FTAG']
+        else:
+            gf, ga = row['FTAG'], row['FTHG']
+        try:
+            diffs.append(float(gf) - float(ga))
+        except Exception:
+            continue
+    return float(np.nansum(diffs)) if diffs else 0.0
+
+
+def match_rating(home_team: str, away_team: str, history_df: pd.DataFrame, last_n: int = 6) -> float:
+    """Match rating: r = rating_home − rating_away, where rating_* are goal-supremacy over last N."""
+    rh = compute_goal_supremacy_rating(history_df, home_team, last_n=last_n)
+    ra = compute_goal_supremacy_rating(history_df, away_team, last_n=last_n)
+    return float(rh - ra)
+
+
+def _build_training_ratings(history_df: pd.DataFrame, last_n: int = 6) -> Tuple[np.ndarray, np.ndarray]:
+    """Construct arrays (r, outcome) from historical matches.
+    outcome: 0=Home win, 1=Draw, 2=Away win
+    For each historical match, compute r using only matches prior to that match for each team.
+    """
+    if history_df is None or history_df.empty:
+        return np.array([]), np.array([])
+
+    df = history_df.copy()
+    # Normalize columns
+    rename_map = {}
+    for c in df.columns:
+        lc = str(c).lower()
+        if lc in ('hometeam', 'home_team'):
+            rename_map[c] = 'HomeTeam'
+        elif lc in ('awayteam', 'away_team'):
+            rename_map[c] = 'AwayTeam'
+        elif lc in ('fthg', 'homegoals'):
+            rename_map[c] = 'FTHG'
+        elif lc in ('ftag', 'awaygoals'):
+            rename_map[c] = 'FTAG'
+        elif lc == 'date' and c != 'Date':
+            rename_map[c] = 'Date'
+    if rename_map:
+        df = df.rename(columns=rename_map)
+    if not set(['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']).issubset(df.columns):
+        return np.array([]), np.array([])
+
+    df['FTHG'] = pd.to_numeric(df['FTHG'], errors='coerce')
+    df['FTAG'] = pd.to_numeric(df['FTAG'], errors='coerce')
+    if 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True)
+        df = df.sort_values('Date', na_position='last')
+    else:
+        df = df.reset_index(drop=True)
+
+    # Build index of matches per team (chronological indexes)
+    team_matches: Dict[str, List[int]] = {}
+    for idx, row in df.iterrows():
+        team_matches.setdefault(str(row['HomeTeam']), []).append(idx)
+        team_matches.setdefault(str(row['AwayTeam']), []).append(idx)
+
+    ratings: List[float] = []
+    outcomes: List[int] = []
+
+    for idx, row in df.iterrows():
+        home = str(row['HomeTeam'])
+        away = str(row['AwayTeam'])
+
+        def last_n_diff(team: str) -> float:
+            inds = [i for i in team_matches.get(team, []) if i < idx]
+            if not inds:
+                return 0.0
+            recent = inds[-last_n:]
+            diffs = []
+            for j in recent:
+                r = df.iloc[j]
+                if r['HomeTeam'] == team:
+                    gf, ga = r['FTHG'], r['FTAG']
+                else:
+                    gf, ga = r['FTAG'], r['FTHG']
+                try:
+                    diffs.append(float(gf) - float(ga))
+                except Exception:
+                    continue
+            return float(np.nansum(diffs)) if diffs else 0.0
+
+        rh = last_n_diff(home)
+        ra = last_n_diff(away)
+        r_val = rh - ra
+        ratings.append(float(r_val))
+
+        if row['FTHG'] > row['FTAG']:
+            outcomes.append(0)
+        elif row['FTHG'] == row['FTAG']:
+            outcomes.append(1)
+        else:
+            outcomes.append(2)
+
+    return np.array(ratings, dtype=float), np.array(outcomes, dtype=int)
+
+
+def fit_rating_to_prob_models(history_df: pd.DataFrame, last_n: int = 6, min_sample_for_rating: int = 30) -> Dict:
+    """Fit simple polynomial models mapping rating r -> (P_home, P_draw, P_away).
+    - Home: linear
+    - Draw: quadratic
+    - Away: quadratic
+    When insufficient samples, fall back to overall means; store sample size and bounds for diagnostics.
+    """
+    r, y = _build_training_ratings(history_df, last_n=last_n)
+    if r.size == 0 or y.size == 0:
+        return {
+            'home_poly': None,
+            'draw_poly': None,
+            'away_poly': None,
+            'fallback_probs': {'Home': 0.45, 'Draw': 0.25, 'Away': 0.30},
+            'sample_size': 0,
+            'min_sample_for_rating': int(min_sample_for_rating),
+            'rating_min': 0.0,
+            'rating_max': 0.0,
+        }
+
+    t_home = (y == 0).astype(float)
+    t_draw = (y == 1).astype(float)
+    t_away = (y == 2).astype(float)
+
+    def fit_poly(x, t, deg):
+        try:
+            coefs = np.polyfit(x, t, deg)
+            return np.poly1d(coefs)
+        except Exception:
+            return None
+
+    home_poly = fit_poly(r, t_home, 1)
+    draw_poly = fit_poly(r, t_draw, 2)
+    away_poly = fit_poly(r, t_away, 2)
+
+    fallback_probs = {
+        'Home': float(np.mean(t_home)),
+        'Draw': float(np.mean(t_draw)),
+        'Away': float(np.mean(t_away)),
+    }
+
+    return {
+        'home_poly': home_poly,
+        'draw_poly': draw_poly,
+        'away_poly': away_poly,
+        'fallback_probs': fallback_probs,
+        'sample_size': int(r.size),
+        'min_sample_for_rating': int(min_sample_for_rating),
+        'rating_min': float(np.min(r)),
+        'rating_max': float(np.max(r)),
+    }
+
+
+def rating_probabilities_from_rating(r: float, models: Dict) -> Tuple[float, float, float]:
+    """Evaluate fitted models at rating r; return normalized (p_home, p_draw, p_away).
+    Uses fallback means if models are missing or too few samples.
+    """
+    if not models or models.get('sample_size', 0) < models.get('min_sample_for_rating', 30):
+        fb = models.get('fallback_probs', {'Home': 0.45, 'Draw': 0.25, 'Away': 0.30}) if models else {'Home': 0.45, 'Draw': 0.25, 'Away': 0.30}
+        s = fb['Home'] + fb['Draw'] + fb['Away']
+        return fb['Home']/s, fb['Draw']/s, fb['Away']/s
+
+    def eval_poly(poly, x, mean_val):
+        if poly is None:
+            return float(mean_val)
+        try:
+            return float(poly(x))
+        except Exception:
+            return float(mean_val)
+
+    fb = models.get('fallback_probs', {'Home': 0.45, 'Draw': 0.25, 'Away': 0.30})
+    pH = eval_poly(models.get('home_poly'), r, fb['Home'])
+    pD = eval_poly(models.get('draw_poly'), r, fb['Draw'])
+    pA = eval_poly(models.get('away_poly'), r, fb['Away'])
+
+    # Clamp and normalize
+    pH = min(max(pH, 0.001), 0.999)
+    pD = min(max(pD, 0.001), 0.999)
+    pA = min(max(pA, 0.001), 0.999)
+    s = pH + pD + pA
+    return pH / s, pD / s, pA / s
+
+# Backwards-compatible alias
+rating_probabilities = rating_probabilities_from_rating
 
 # --- UTILITIES ---
 

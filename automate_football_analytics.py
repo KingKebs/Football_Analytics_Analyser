@@ -22,6 +22,23 @@ import numpy as np
 import pandas as pd
 import logging
 
+# Helper to parse range filter
+_DEF_RANGE = None
+
+def _parse_range_filter(s: str):
+    if not s:
+        return None
+    try:
+        parts = [p.strip() for p in s.split(',') if p.strip()]
+        if len(parts) != 2:
+            return None
+        lo, hi = float(parts[0]), float(parts[1])
+        if lo > hi:
+            lo, hi = hi, lo
+        return (lo, hi)
+    except Exception:
+        return None
+
 # Import algorithms module
 from algorithms import (
     compute_basic_strengths,
@@ -33,6 +50,10 @@ from algorithms import (
     kelly_fraction,
     prob_to_decimal_odds,
     format_bet_slip,
+    # rating model helpers
+    match_rating,
+    fit_rating_to_prob_models,
+    rating_probabilities_from_rating,
 )
 
 # Logging
@@ -197,30 +218,77 @@ def load_historical_matches(data_dir: str = DATA_DIR, subfolder: str = OLD_CSV_S
     if not dfs:
         return pd.DataFrame()
     all_df = pd.concat(dfs, ignore_index=True)
-    all_df['Date'] = pd.to_datetime(all_df['Date'], errors='coerce', dayfirst=True, infer_datetime_format=True)
+    all_df['Date'] = pd.to_datetime(all_df['Date'], errors='coerce', dayfirst=True)
     all_df = all_df.sort_values('Date', na_position='last')
     logging.info(f"Loaded {len(files)} historical files; combined rows: {len(all_df)}")
     return all_df
 
 
-def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: pd.DataFrame) -> Dict:
+def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: pd.DataFrame, min_confidence: float = 0.6, rating_models: Dict = None, history_df: pd.DataFrame = None, rating_model_config: Dict = None) -> Dict:
+    # Compute xG and score matrix first (needed for Poisson probabilities and markets)
     xg_home, xg_away = estimate_xg(home_team, away_team, strengths_df)
     mat = score_probability_matrix(xg_home, xg_away, max_goals=6)
-    markets = extract_markets_from_score_matrix(mat)
+
+    external_probs = None
+    if rating_models and rating_model_config and rating_model_config.get('model', 'none') != 'none':
+        last_n = int(rating_model_config.get('last_n', 6))
+        try:
+            r = match_rating(home_team, away_team, history_df, last_n)
+            # range filter guardrail
+            rng = rating_model_config.get('range_filter')
+            if rng and not (rng[0] < r <= rng[1]):
+                r = None
+            if r is not None:
+                p_home_rating, p_draw_rating, p_away_rating = rating_probabilities_from_rating(r, rating_models)
+            else:
+                p_home_rating = p_draw_rating = p_away_rating = None
+        except Exception:
+            p_home_rating = p_draw_rating = p_away_rating = None
+
+        if p_home_rating is not None:
+            if rating_model_config.get('model') == 'goal_supremacy':
+                # Use pure rating-based 1X2
+                external_probs = {'1X2': {'Home': p_home_rating, 'Draw': p_draw_rating, 'Away': p_away_rating}}
+            elif rating_model_config.get('model') == 'blended':
+                # Blend Poisson and rating-based 1X2 using weight
+                poisson_all = extract_markets_from_score_matrix(mat, min_confidence=0.0)
+                poisson_1x2 = poisson_all.get('1X2', {})
+                blend_weight = float(rating_model_config.get('blend_weight', 0.3))
+                # defaults if poisson missing
+                pH_pois = float(poisson_1x2.get('Home', 0.0))
+                pD_pois = float(poisson_1x2.get('Draw', 0.0))
+                pA_pois = float(poisson_1x2.get('Away', 0.0))
+                blended_home = (1 - blend_weight) * pH_pois + blend_weight * p_home_rating
+                blended_draw = (1 - blend_weight) * pD_pois + blend_weight * p_draw_rating
+                blended_away = (1 - blend_weight) * pA_pois + blend_weight * p_away_rating
+                total = blended_home + blended_draw + blended_away
+                if total > 0:
+                    external_probs = {'1X2': {'Home': blended_home / total, 'Draw': blended_draw / total, 'Away': blended_away / total}}
+
+    markets = extract_markets_from_score_matrix(mat, min_confidence=min_confidence, external_probs=external_probs)
     corners = estimate_corners_and_cards(xg_home, xg_away)
 
     picks = []
-    # 1X2 top pick
-    best_1x2 = max(markets['1X2'].items(), key=lambda x: x[1])
-    picks.append({'market': '1X2', 'selection': best_1x2[0], 'prob': best_1x2[1], 'odds': prob_to_decimal_odds(best_1x2[1])})
-    # BTTS suggestion
-    btts_pref = 'No' if markets['BTTS']['No'] > 0.6 else 'Yes' if markets['BTTS']['Yes'] > 0.6 else None
-    if btts_pref:
-        picks.append({'market': 'BTTS', 'selection': btts_pref, 'prob': markets['BTTS'][btts_pref], 'odds': prob_to_decimal_odds(markets['BTTS'][btts_pref])})
-    # Over/Under 2.5
-    ou_pref = 'Under2.5' if markets['OU']['Under2.5'] > 0.7 else 'Over2.5' if markets['OU']['Over2.5'] > 0.7 else None
-    if ou_pref:
-        picks.append({'market': 'Over/Under 2.5', 'selection': ou_pref, 'prob': markets['OU'][ou_pref], 'odds': prob_to_decimal_odds(markets['OU'][ou_pref])})
+    one_x_two = markets.get('1X2', {})
+    if one_x_two:
+        best_1x2 = max(one_x_two.items(), key=lambda x: x[1])
+        picks.append({'market': '1X2', 'selection': best_1x2[0], 'prob': float(best_1x2[1]), 'odds': prob_to_decimal_odds(float(best_1x2[1]))})
+
+    btts = markets.get('BTTS', {})
+    btts_no = float(btts.get('No', 0))
+    btts_yes = float(btts.get('Yes', 0))
+    if btts_no > 0.6:
+        picks.append({'market': 'BTTS', 'selection': 'No', 'prob': btts_no, 'odds': prob_to_decimal_odds(btts_no)})
+    elif btts_yes > 0.6:
+        picks.append({'market': 'BTTS', 'selection': 'Yes', 'prob': btts_yes, 'odds': prob_to_decimal_odds(btts_yes)})
+
+    ou = markets.get('OU', {})
+    ou_under = float(ou.get('Under2.5', 0))
+    ou_over = float(ou.get('Over2.5', 0))
+    if ou_under > 0.7:
+        picks.append({'market': 'Over/Under 2.5', 'selection': 'Under2.5', 'prob': ou_under, 'odds': prob_to_decimal_odds(ou_under)})
+    elif ou_over > 0.7:
+        picks.append({'market': 'Over/Under 2.5', 'selection': 'Over2.5', 'prob': ou_over, 'odds': prob_to_decimal_odds(ou_over)})
 
     suggestion = {
         'home': home_team,
@@ -235,7 +303,7 @@ def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: 
     return suggestion
 
 
-def main_interactive(bankroll: float = 100.0, league_code: str = None):
+def main_interactive(bankroll: float = 100.0, league_code: str = None, rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, min_confidence: float = 0.6):
     logging.info("Starting analytics workflow")
     logging.info(f"Bankroll set to {bankroll}")
 
@@ -274,6 +342,19 @@ def main_interactive(bankroll: float = 100.0, league_code: str = None):
     else:
         logging.info("No historical match files found; using season strengths only.")
 
+    # Fit rating models if requested and history available
+    rating_models = None
+    if rating_model and rating_model != 'none':
+        if not history_df.empty:
+            try:
+                logging.info("Fitting rating-to-probability models from historical data...")
+                rating_models = fit_rating_to_prob_models(history_df, last_n=rating_last_n, min_sample_for_rating=min_sample_for_rating)
+                logging.info(f"Rating model fitted (samples={rating_models.get('sample_size', 0)})")
+            except Exception as e:
+                logging.warning(f"Failed to fit rating models: {e}")
+        else:
+            logging.warning("Rating model requested, but no historical match files found. Using season strengths only.")
+
     teams = list(strengths_df['Team'])
     logging.info(f"Teams available: {len(teams)}")
     print("Available teams (sample):")
@@ -283,7 +364,13 @@ def main_interactive(bankroll: float = 100.0, league_code: str = None):
     with open(LAST_TEAMS_JSON, 'w') as f:
         json.dump({'home_team': home, 'away_team': away, 'league': league_code}, f)
 
-    suggestion = build_single_match_suggestion(home, away, strengths_df)
+    rating_model_config = {
+        'model': rating_model,
+        'last_n': rating_last_n,
+        'blend_weight': rating_blend_weight,
+    }
+
+    suggestion = build_single_match_suggestion(home, away, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
 
     print('\nMatch suggestion: {} v {}'.format(home, away))
     print('Estimated xG -> {}: {:.2f}, {}: {:.2f}'.format(home, suggestion['xg_home'], away, suggestion['xg_away']))
@@ -307,9 +394,10 @@ def main_interactive(bankroll: float = 100.0, league_code: str = None):
     for i in range(0, min(6, len(teams)-1), 2):
         extra_home = teams[i]
         extra_away = teams[i+1]
-        s = build_single_match_suggestion(extra_home, extra_away, strengths_df)
-        best = max(s['markets']['1X2'].items(), key=lambda x: x[1])
-        sample_preds.append((extra_home, extra_away, best[1], prob_to_decimal_odds(best[1])))
+        s = build_single_match_suggestion(extra_home, extra_away, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+        best = max(s['markets'].get('1X2', {}).items(), key=lambda x: x[1]) if s['markets'].get('1X2') else None
+        if best:
+            sample_preds.append((extra_home, extra_away, best[1], prob_to_decimal_odds(best[1])))
 
     parlays = generate_parlays(sample_preds, min_size=2, max_size=3, max_results=10)
     print('\nTop parlays:')
@@ -330,6 +418,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Football analytics assistant (multi-league)')
     parser.add_argument('--bankroll', type=float, default=100.0, help='Estimated bankroll for stake suggestions')
     parser.add_argument('--league', type=str, help='League code (e.g., E0, D1, SP1). If omitted, interactive select.')
+    parser.add_argument('--rating-model', type=str, default='none', choices=['none', 'goal_supremacy', 'blended'], help='Rating model for 1X2 probabilities')
+    parser.add_argument('--rating-last-n', type=int, default=6, help='Number of recent matches for goal supremacy rating')
+    parser.add_argument('--min-sample-for-rating', type=int, default=30, help='Minimum sample size to fit rating models')
+    parser.add_argument('--rating-blend-weight', type=float, default=0.3, help='Blend weight when using blended model (0..1)')
+    parser.add_argument('--rating-range-filter', type=str, help='Comma-separated rating range (lo,hi); skip rating override when r is outside')
+    parser.add_argument('--min-confidence', type=float, default=0.6, help='Minimum market probability to surface')
     args = parser.parse_args()
-    main_interactive(bankroll=args.bankroll, league_code=args.league)
-
+    rng = _parse_range_filter(args.rating_range_filter)
+    main_interactive(bankroll=args.bankroll, league_code=args.league, rating_model=args.rating_model, rating_last_n=args.rating_last_n, min_sample_for_rating=args.min_sample_for_rating, rating_blend_weight=args.rating_blend_weight, min_confidence=args.min_confidence)

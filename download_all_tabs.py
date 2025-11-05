@@ -11,6 +11,7 @@ Examples:
   python download_all_tabs.py --download-football-data --leagues ALL          # download all supported leagues
   python download_all_tabs.py --download-football-data --force                # re-download regardless of cache
   python download_all_tabs.py --download-football-data --refresh-hours 6      # only refresh if older than 6h
+  python download_all_tabs.py --download-football-data --seasons AUTO         # auto-detect current season
 
 Notes:
 - The automate_football_analytics.py script expects latest files at:
@@ -27,6 +28,10 @@ import time
 from datetime import datetime, timezone
 from typing import List, Dict
 import json
+from colorama import init, Fore
+
+# Initialize colorama
+init()
 
 # requests is imported lazily inside download_url_to_file so dry-run works even if requests isn't installed
 
@@ -35,9 +40,31 @@ import json
 FOOTBALL_DATA_DIR = 'football-data'
 ALL_EURO_DIR = os.path.join(FOOTBALL_DATA_DIR, 'all-euro-football')
 
-# Season codes: '2526' = 2025/26, '2425' = 2024/25, '2324' = 2023/24, ...
-# NOTE: default changed to only the current season (2526) to avoid unnecessary downloads
-DEFAULT_SEASONS: List[str] = ['2526']
+# Compute current season code (e.g., '2526' for 2025/26)
+
+def current_season_code(now: datetime | None = None) -> str:
+    if now is None:
+        now = datetime.now(timezone.utc)
+    year = now.year
+    month = now.month
+    if month >= 7:  # July-Dec -> season starts this calendar year
+        start_year = year
+        end_year = year + 1
+    else:           # Jan-Jun -> season started previous calendar year
+        start_year = year - 1
+        end_year = year
+    return f"{start_year % 100:02d}{end_year % 100:02d}"
+
+
+def previous_season_code(season_code: str) -> str:
+    try:
+        a, b = int(season_code[:2]), int(season_code[2:])
+        a_prev = (a - 1) % 100
+        b_prev = a  # previous season ends at start year
+        return f"{a_prev:02d}{b_prev:02d}"
+    except Exception:
+        return season_code
+
 
 # Supported football-data.co.uk league codes present in your repo
 SUPPORTED_LEAGUES: List[str] = [
@@ -72,11 +99,10 @@ def _file_age_hours(path: str) -> float:
 
 
 def download_url_to_file(url: str, dest_path: str, retries: int = 3, backoff: float = 1.0) -> bool:
-    """Download URL with basic retries and exponential-ish backoff."""
     try:
         import requests
     except Exception:
-        print("requests library not available: can't download URLs. Install with 'pip install requests' to enable downloads.")
+        print(Fore.RED + "requests library not available: can't download URLs. Install with 'pip install requests' to enable downloads." + Fore.RESET)
         return False
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     for attempt in range(1, retries + 1):
@@ -87,9 +113,9 @@ def download_url_to_file(url: str, dest_path: str, retries: int = 3, backoff: fl
                     f.write(resp.content)
                 return True
             else:
-                print(f"Attempt {attempt}: HTTP {resp.status_code} for {url}")
+                print(Fore.RED + f"Attempt {attempt}: HTTP {resp.status_code} for {url}" + Fore.RESET)
         except requests.RequestException as e:
-            print(f"Attempt {attempt}: error downloading {url}: {e}")
+            print(Fore.RED + f"Attempt {attempt}: error downloading {url}: {e}" + Fore.RESET)
         time.sleep(backoff * attempt)
     return False
 
@@ -100,7 +126,7 @@ def write_latest_alias(latest_src: str, alias_path: str) -> None:
             dst.write(src.read())
         print(f"Wrote latest alias -> {alias_path}")
     except Exception as e:
-        print(f"Warning: failed to write alias {alias_path}: {e}")
+        print(Fore.RED + f"Warning: failed to write alias {alias_path}: {e}" + Fore.RESET)
 
 
 def _load_cache(cache_path: str) -> Dict[str, Dict]:
@@ -154,65 +180,34 @@ def download_football_data(
             continue
 
         saved: List[str] = []
-        latest_season_file: str | None = None
+        latest_pair: tuple[str, str] | None = None  # (season, path)
         print(f"\n== {code}: downloading seasons {seasons} (force={force}, refresh<{refresh_hours}h, dry_run={dry_run}) ==")
 
-        # Alias freshness check: prefer cache if available
-        alias_path = os.path.join(out_dir, f"{code}.csv")
-        alias_fresh = False
-        if not force:
-            # Check cache first
-            try:
-                entry = cache.get(code)
-                if entry and 'last_download' in entry:
-                    last_iso = entry['last_download']
-                    try:
-                        last_dt = datetime.fromisoformat(last_iso)
-                        if last_dt.tzinfo is None:
-                            # assume UTC if no tz
-                            last_dt = last_dt.replace(tzinfo=timezone.utc)
-                        age_h = (_now_utc() - last_dt).total_seconds() / 3600.0
-                        if age_h < refresh_hours:
-                            print(f"Alias fresh according to cache: {code} ({age_h:.1f}h) -> skip league {code}")
-                            results[code] = [alias_path]
-                            continue
-                    except Exception:
-                        # invalid cache timestamp, fall back to file mtime
-                        pass
-
-            except Exception:
-                pass
-
-            # Fallback to file mtime if cache not used
-            if os.path.exists(alias_path):
-                alias_age_h = _file_age_hours(alias_path)
-                if alias_age_h < refresh_hours:
-                    print(f"Alias fresh: {os.path.basename(alias_path)} ({alias_age_h:.1f}h) -> skip league {code}")
-                    results[code] = [alias_path]
-                    continue
+        # Always attempt per-season file handling; don't short-circuit on alias freshness
 
         # Process per-season files
-        for idx, season in enumerate(seasons):
+        for season in seasons:
             url = BASE_URL_TMPL.format(season=season, code=code)
             season_fname = f"{code}_{season}.csv"
             dest_path = os.path.join(out_dir, season_fname)
 
-            # Caching: skip if exists and fresh enough
+            # Caching: skip network if exists and fresh enough
             if os.path.exists(dest_path) and not force:
                 age_h = _file_age_hours(dest_path)
                 if age_h < refresh_hours:
                     print(f"Fresh: {season_fname} ({age_h:.1f}h old) -> skip")
                     saved.append(dest_path)
-                    if idx == 0:
-                        latest_season_file = dest_path
+                    # track latest by season code
+                    if latest_pair is None or season > latest_pair[0]:
+                        latest_pair = (season, dest_path)
                     continue
 
             # If dry-run, report and don't download
             if dry_run:
                 print(f"[DRY-RUN] Would download {url} -> {season_fname}")
                 saved.append(dest_path)
-                if idx == 0:
-                    latest_season_file = dest_path
+                if latest_pair is None or season > latest_pair[0]:
+                    latest_pair = (season, dest_path)
                 continue
 
             print(f"Downloading {url} -> {season_fname}")
@@ -220,20 +215,20 @@ def download_football_data(
             if ok:
                 print(f"Saved {dest_path}")
                 saved.append(dest_path)
-                if idx == 0:
-                    latest_season_file = dest_path
+                if latest_pair is None or season > latest_pair[0]:
+                    latest_pair = (season, dest_path)
                 # Update cache entry for this league
                 cache.setdefault(code, {})['last_download'] = _now_utc().isoformat()
             else:
                 print(f"Failed to download {url}")
 
-        # Write latest alias (<code>.csv) from most recent season we processed
-        if latest_season_file is not None:
+        # Write latest alias (<code>.csv) from the most recent season we processed or had cached
+        if latest_pair is not None and latest_pair[1] and os.path.exists(latest_pair[1]):
             alias = os.path.join(out_dir, f"{code}.csv")
             if dry_run:
-                print(f"[DRY-RUN] Would write alias {alias} from {latest_season_file}")
+                print(f"[DRY-RUN] Would write alias {alias} from {latest_pair[1]}")
             else:
-                write_latest_alias(latest_season_file, alias)
+                write_latest_alias(latest_pair[1], alias)
                 # Also update cache after successful alias write
                 cache.setdefault(code, {})['last_download'] = _now_utc().isoformat()
         else:
@@ -253,7 +248,8 @@ def download_football_data(
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description='Download football-data.co.uk CSVs into all-euro-football directory')
     parser.add_argument('--download-football-data', action='store_true', help='Download football-data CSVs')
-    parser.add_argument('--seasons', type=str, default=','.join(DEFAULT_SEASONS), help='Comma-separated list of seasons, e.g. 2526,2425,2324')
+    parser.add_argument('--seasons', type=str, default='AUTO', help='Comma-separated list of seasons, e.g. 2526,2425 or AUTO for current season')
+    parser.add_argument('--include-previous-season', action='store_true', help='When using AUTO seasons, also include the previous season')
     parser.add_argument('--leagues', type=str, default='E0', help='Comma-separated league codes or ALL for all supported')
     parser.add_argument('--out', type=str, default=ALL_EURO_DIR, help='Output directory')
     parser.add_argument('--force', action='store_true', help='Force re-download even if files exist and are fresh')
@@ -261,7 +257,15 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument('--dry-run', action='store_true', help='Show what would be downloaded without performing network requests or writing files')
     args = parser.parse_args(argv)
 
-    seasons = [s.strip() for s in args.seasons.split(',') if s.strip()]
+    # Resolve seasons
+    if args.seasons.strip().upper() == 'AUTO':
+        cur = current_season_code()
+        seasons = [cur]
+        if args.include_previous_season:
+            seasons.append(previous_season_code(cur))
+    else:
+        seasons = [s.strip() for s in args.seasons.split(',') if s.strip()]
+
     leagues = [c.strip().upper() for c in args.leagues.split(',') if c.strip()]
 
     if not args.download_football_data:

@@ -1,0 +1,543 @@
+"""
+Football Analytics Analyser - Full League CLI
+
+End-to-end workflow for a full league round:
+- Load league table and upcoming fixtures
+- Compute team strengths (+ optional recent form blending)
+- Build suggestions for all fixtures in the round
+- Generate and select favorable parlays across all matches
+- Save results to data/
+"""
+
+import os
+import json
+import argparse
+from datetime import datetime, timezone
+from typing import Dict, List, Tuple
+
+import numpy as np
+import pandas as pd
+import logging
+import glob
+import difflib
+
+# Algorithms
+from algorithms import (
+    compute_basic_strengths,
+    estimate_xg,
+    score_probability_matrix,
+    extract_markets_from_score_matrix,
+    estimate_corners_and_cards,
+    generate_parlays,
+    prob_to_decimal_odds,
+    format_bet_slip,
+    match_rating,
+    fit_rating_to_prob_models,
+    rating_probabilities_from_rating,
+    merge_form_into_strengths,
+)
+
+# Logging
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s', datefmt='%H:%M:%S')
+
+# Paths
+DATA_DIR = 'data'
+OLD_CSV_SUBFOLDER = 'old csv'
+EURO_FOOTBALL_DIR = os.path.join('football-data', 'all-euro-football')
+
+# Cache window
+CACHE_DURATION_HOURS = 6
+
+
+class Colors:
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    CYAN = '\033[36m'
+    GREEN = '\033[32m'
+    YELLOW = '\033[33m'
+    RED = '\033[31m'
+    MAGENTA = '\033[35m'
+    BLUE = '\033[34m'
+
+
+# League mapping (subset)
+LEAGUE_MAPPINGS: Dict[str, Dict[str, str]] = {
+    'E0': {'name': 'English Premier League (EPL)', 'country': 'England', 'tier': 1},
+    'E1': {'name': 'English Championship', 'country': 'England', 'tier': 2},
+    'E2': {'name': 'English League One', 'country': 'England', 'tier': 3},
+    'E3': {'name': 'English League Two', 'country': 'England', 'tier': 4},
+    'D1': {'name': 'Bundesliga (Germany)', 'country': 'Germany', 'tier': 1},
+    'D2': {'name': '2. Bundesliga (Germany)', 'country': 'Germany', 'tier': 2},
+    'SP1': {'name': 'La Liga (Spain)', 'country': 'Spain', 'tier': 1},
+    'SP2': {'name': 'Segunda División (Spain)', 'country': 'Spain', 'tier': 2},
+    'I1': {'name': 'Serie A (Italy)', 'country': 'Italy', 'tier': 1},
+    'I2': {'name': 'Serie B (Italy)', 'country': 'Italy', 'tier': 2},
+    'F1': {'name': 'Ligue 1 (France)', 'country': 'France', 'tier': 1},
+    'F2': {'name': 'Ligue 2 (France)', 'country': 'France', 'tier': 2},
+    'P1': {'name': 'Primeira Liga (Portugal)', 'country': 'Portugal', 'tier': 1},
+    'N1': {'name': 'Eredivisie (Netherlands)', 'country': 'Netherlands', 'tier': 1},
+    'SC0': {'name': 'Scottish Premiership', 'country': 'Scotland', 'tier': 1},
+    'SC1': {'name': 'Scottish Championship', 'country': 'Scotland', 'tier': 2},
+    'SC2': {'name': 'Scottish League One', 'country': 'Scotland', 'tier': 3},
+    'SC3': {'name': 'Scottish League Two', 'country': 'Scotland', 'tier': 4},
+    'B1': {'name': 'Belgian Pro League', 'country': 'Belgium', 'tier': 1},
+    'G1': {'name': 'Super League Greece', 'country': 'Greece', 'tier': 1},
+    'T1': {'name': 'Süper Lig (Turkey)', 'country': 'Turkey', 'tier': 1},
+}
+
+
+def get_league_info(league_code: str) -> Dict[str, str]:
+    if league_code not in LEAGUE_MAPPINGS:
+        raise ValueError(f"Unknown league code: {league_code}")
+    return LEAGUE_MAPPINGS[league_code]
+
+
+def get_league_csv(league_code: str) -> str:
+    path = os.path.join(EURO_FOOTBALL_DIR, f"{league_code}.csv")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"League CSV not found: {path}")
+    return path
+
+
+def aggregate_football_data(csv_path: str) -> pd.DataFrame:
+    """Aggregate match-level CSV into a league table (Team, P, F, A)."""
+    df_raw = pd.read_csv(csv_path, low_memory=False)
+    if set(['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']).issubset(df_raw.columns):
+        df_raw['FTHG'] = pd.to_numeric(df_raw['FTHG'], errors='coerce').fillna(0).astype(int)
+        df_raw['FTAG'] = pd.to_numeric(df_raw['FTAG'], errors='coerce').fillna(0).astype(int)
+        teams = sorted(pd.unique(df_raw[['HomeTeam', 'AwayTeam']].values.ravel('K')))
+        rows = []
+        for t in teams:
+            home_mask = df_raw['HomeTeam'] == t
+            away_mask = df_raw['AwayTeam'] == t
+            p = int(home_mask.sum() + away_mask.sum())
+            f = int(df_raw.loc[home_mask, 'FTHG'].sum() + df_raw.loc[away_mask, 'FTAG'].sum())
+            a = int(df_raw.loc[home_mask, 'FTAG'].sum() + df_raw.loc[away_mask, 'FTHG'].sum())
+            rows.append({'Team': t, 'P': p, 'F': f, 'A': a})
+        return pd.DataFrame(rows)
+    return df_raw
+
+
+def load_league_table(league_code: str) -> pd.DataFrame:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    cache_path = os.path.join(DATA_DIR, f"league_data_{league_code}.csv")
+    if os.path.exists(cache_path):
+        mtime = datetime.fromtimestamp(os.path.getmtime(cache_path), tz=timezone.utc)
+        age_hours = (datetime.now(timezone.utc) - mtime).total_seconds() / 3600
+        if age_hours < CACHE_DURATION_HOURS:
+            logging.info(f"Loading cached league table: {cache_path} ({age_hours:.1f}h old)")
+            return pd.read_csv(cache_path)
+    src = get_league_csv(league_code)
+    info = get_league_info(league_code)
+    logging.info(f"Loading {info['name']} from {src}")
+    agg = aggregate_football_data(src)
+    agg.to_csv(cache_path, index=False)
+    logging.info(f"Saved aggregated league table to {cache_path}")
+    return agg
+
+
+def load_historical_matches(data_dir: str = DATA_DIR, subfolder: str = OLD_CSV_SUBFOLDER) -> pd.DataFrame:
+    folder = os.path.join(data_dir, subfolder)
+    if not os.path.isdir(folder):
+        return pd.DataFrame()
+    files = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith('.csv')]
+    if not files:
+        return pd.DataFrame()
+    dfs = []
+    for fp in files:
+        try:
+            df = pd.read_csv(fp, low_memory=False)
+            rename_map = {}
+            for c in df.columns:
+                lc = str(c).lower()
+                if lc in ('hometeam', 'home_team'):
+                    rename_map[c] = 'HomeTeam'
+                if lc in ('awayteam', 'away_team'):
+                    rename_map[c] = 'AwayTeam'
+                if lc in ('fthg', 'homegoals'):
+                    rename_map[c] = 'FTHG'
+                if lc in ('ftag', 'awaygoals'):
+                    rename_map[c] = 'FTAG'
+                if lc == 'date' and c != 'Date':
+                    rename_map[c] = 'Date'
+            df = df.rename(columns=rename_map)
+            if set(['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']).issubset(df.columns):
+                dfs.append(df[['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']])
+        except Exception:
+            continue
+    if not dfs:
+        return pd.DataFrame()
+    all_df = pd.concat(dfs, ignore_index=True)
+    all_df['Date'] = pd.to_datetime(all_df['Date'], errors='coerce', dayfirst=True)
+    all_df = all_df.sort_values('Date', na_position='last')
+    logging.info(f"Loaded {len(files)} historical files; combined rows: {len(all_df)}")
+    return all_df
+
+
+def load_upcoming_fixtures(league_code: str) -> pd.DataFrame:
+    """Load upcoming fixtures for the league or simulate a round from league table."""
+    fixtures_path = os.path.join(EURO_FOOTBALL_DIR, f"{league_code}_fixtures.csv")
+    if os.path.exists(fixtures_path):
+        try:
+            df = pd.read_csv(fixtures_path)
+            # Normalize
+            cols = {c.lower(): c for c in df.columns}
+            date_col = cols.get('date') or cols.get('kickoff')
+            home_col = cols.get('hometeam') or cols.get('home')
+            away_col = cols.get('awayteam') or cols.get('away')
+            if date_col and home_col and away_col:
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+                now = pd.Timestamp.now(tz='UTC')
+                end = now + pd.Timedelta(days=21)
+                df = df[(df[date_col] >= now) & (df[date_col] <= end)].rename(columns={date_col: 'Date', home_col: 'HomeTeam', away_col: 'AwayTeam'})
+                return df[['Date', 'HomeTeam', 'AwayTeam']].reset_index(drop=True)
+        except Exception:
+            pass
+    # Fallback: simulate pairings from league table
+    league_df = load_league_table(league_code)
+    teams = list(league_df['Team'].astype(str))
+    if len(teams) % 2 != 0:
+        teams.append('BYE')
+    fixtures = []
+    now = pd.Timestamp.now(tz='UTC')
+    for i in range(0, len(teams), 2):
+        if teams[i] != 'BYE' and teams[i+1] != 'BYE':
+            fixtures.append({'Date': now, 'HomeTeam': teams[i], 'AwayTeam': teams[i+1]})
+            if len(fixtures) >= 10:
+                break
+    return pd.DataFrame(fixtures)
+
+
+def load_parsed_fixtures(date_str: str = None, data_dir: str = DATA_DIR) -> pd.DataFrame:
+    """Load parsed fixtures from data/todays_fixtures_*.csv|json produced by parse_match_log.py"""
+    if date_str is None:
+        date_str = datetime.now().strftime('%Y%m%d')
+    csv_path = os.path.join(data_dir, f"todays_fixtures_{date_str}.csv")
+    json_path = os.path.join(data_dir, f"todays_fixtures_{date_str}.json")
+
+    candidates = []
+    if os.path.exists(csv_path):
+        candidates.append(csv_path)
+    if os.path.exists(json_path):
+        candidates.append(json_path)
+    if not candidates:
+        all_files = sorted(glob.glob(os.path.join(data_dir, 'todays_fixtures_*.csv')) + glob.glob(os.path.join(data_dir, 'todays_fixtures_*.json')), key=lambda p: os.path.getmtime(p), reverse=True)
+        if all_files:
+            candidates.append(all_files[0])
+
+    if not candidates:
+        return pd.DataFrame()
+
+    path = candidates[0]
+    try:
+        if path.lower().endswith('.csv'):
+            df = pd.read_csv(path)
+        else:
+            df = pd.read_json(path)
+    except Exception as e:
+        logging.warning(f"Failed to read parsed fixtures file {path}: {e}")
+        return pd.DataFrame()
+
+    # Normalize columns
+    cols = {c.lower(): c for c in df.columns}
+    rename_map = {}
+    if 'date' in cols:
+        rename_map[cols['date']] = 'Date'
+    if 'home' in cols:
+        rename_map[cols['home']] = 'HomeTeam'
+    if 'away' in cols:
+        rename_map[cols['away']] = 'AwayTeam'
+    if 'time' in cols:
+        rename_map[cols['time']] = 'Time'
+    if 'competition' in cols:
+        rename_map[cols['competition']] = 'Competition'
+    if 'league' in cols:
+        rename_map[cols['league']] = 'League'
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
+    if 'Date' in df.columns:
+        try:
+            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        except Exception:
+            pass
+    else:
+        df['Date'] = pd.to_datetime(datetime.now().date())
+
+    if 'HomeTeam' not in df.columns or 'AwayTeam' not in df.columns:
+        logging.warning(f"Parsed fixtures file missing HomeTeam/AwayTeam: {path}")
+        return pd.DataFrame()
+
+    for col in ['HomeTeam', 'AwayTeam', 'League', 'Competition']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+        else:
+            df[col] = ''
+
+    return df[['Date', 'League', 'Competition', 'HomeTeam', 'AwayTeam']]
+
+
+def _canonicalize_team(name: str, team_list: List[str]) -> Tuple[str, float]:
+    if not name:
+        return '', 0.0
+    name_norm = str(name).strip()
+    for t in team_list:
+        if name_norm.lower() == str(t).strip().lower():
+            return t, 1.0
+    candidates = difflib.get_close_matches(name_norm, [str(t) for t in team_list], n=1, cutoff=0.6)
+    if candidates:
+        score = difflib.SequenceMatcher(a=name_norm.lower(), b=candidates[0].lower()).ratio()
+        return candidates[0], score
+    return '', 0.0
+
+
+def map_parsed_to_canonical(parsed_df: pd.DataFrame, strengths_df: pd.DataFrame, league_code: str) -> Tuple[pd.DataFrame, List[Dict]]:
+    if parsed_df is None or parsed_df.empty:
+        return pd.DataFrame(), []
+    if 'Team' in strengths_df.columns:
+        canonical_teams = list(strengths_df['Team'].astype(str))
+    else:
+        return pd.DataFrame(), []
+
+    mapped = []
+    skipped: List[Dict] = []
+    for _, row in parsed_df.iterrows():
+        home = row.get('HomeTeam', '')
+        away = row.get('AwayTeam', '')
+        h_can, h_score = _canonicalize_team(home, canonical_teams)
+        a_can, a_score = _canonicalize_team(away, canonical_teams)
+        if h_score >= 0.7 and a_score >= 0.7:
+            mapped.append({'Date': row['Date'], 'HomeTeam': h_can, 'AwayTeam': a_can})
+        else:
+            skipped.append({'row': row.to_dict(), 'home_match': (h_can, h_score), 'away_match': (a_can, a_score)})
+    return pd.DataFrame(mapped), skipped
+
+
+def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: pd.DataFrame, min_confidence: float = 0.6, rating_models: Dict = None, history_df: pd.DataFrame = None, rating_model_config: Dict = None) -> Dict:
+    # xG and matrix
+    xg_home, xg_away = estimate_xg(home_team, away_team, strengths_df)
+    mat = score_probability_matrix(xg_home, xg_away, max_goals=6)
+
+    # Optional rating-based override/blend for 1X2
+    external_probs = None
+    if rating_models and rating_model_config and rating_model_config.get('model', 'none') != 'none' and history_df is not None:
+        try:
+            r = match_rating(home_team, away_team, history_df, int(rating_model_config.get('last_n', 6)))
+            pH_r, pD_r, pA_r = rating_probabilities_from_rating(r, rating_models)
+            if rating_model_config.get('model') == 'goal_supremacy':
+                external_probs = {'1X2': {'Home': pH_r, 'Draw': pD_r, 'Away': pA_r}}
+            elif rating_model_config.get('model') == 'blended':
+                # derive Poisson 1X2
+                poisson_all = extract_markets_from_score_matrix(mat, min_confidence=0.0)
+                p1 = poisson_all.get('1X2', {})
+                w = float(rating_model_config.get('blend_weight', 0.3))
+                pH_p, pD_p, pA_p = float(p1.get('Home', 0.0)), float(p1.get('Draw', 0.0)), float(p1.get('Away', 0.0))
+                bH = (1 - w) * pH_p + w * pH_r
+                bD = (1 - w) * pD_p + w * pD_r
+                bA = (1 - w) * pA_p + w * pA_r
+                s = bH + bD + bA
+                if s > 0:
+                    external_probs = {'1X2': {'Home': bH / s, 'Draw': bD / s, 'Away': bA / s}}
+        except Exception:
+            pass
+
+    markets = extract_markets_from_score_matrix(mat, min_confidence=min_confidence, external_probs=external_probs)
+    corners = estimate_corners_and_cards(xg_home, xg_away)
+
+    picks = []
+    one_x_two = markets.get('1X2', {})
+    if one_x_two:
+        best_1x2 = max(one_x_two.items(), key=lambda x: x[1])
+        picks.append({'market': '1X2', 'selection': best_1x2[0], 'prob': float(best_1x2[1]), 'odds': prob_to_decimal_odds(float(best_1x2[1]))})
+
+    btts = markets.get('BTTS', {})
+    if float(btts.get('No', 0)) > 0.6:
+        picks.append({'market': 'BTTS', 'selection': 'No', 'prob': float(btts['No']), 'odds': prob_to_decimal_odds(float(btts['No']))})
+    elif float(btts.get('Yes', 0)) > 0.6:
+        picks.append({'market': 'BTTS', 'selection': 'Yes', 'prob': float(btts['Yes']), 'odds': prob_to_decimal_odds(float(btts['Yes']))})
+
+    ou = markets.get('OU', {})
+    if float(ou.get('Under2.5', 0)) > 0.7:
+        p = float(ou['Under2.5'])
+        picks.append({'market': 'Over/Under 2.5', 'selection': 'Under2.5', 'prob': p, 'odds': prob_to_decimal_odds(p)})
+    elif float(ou.get('Over2.5', 0)) > 0.7:
+        p = float(ou['Over2.5'])
+        picks.append({'market': 'Over/Under 2.5', 'selection': 'Over2.5', 'prob': p, 'odds': prob_to_decimal_odds(p)})
+
+    return {
+        'home': home_team,
+        'away': away_team,
+        'xg_home': float(xg_home),
+        'xg_away': float(xg_away),
+        'markets': markets,
+        'corners_cards': corners,
+        'picks': picks,
+        'score_matrix': mat.to_dict(),
+    }
+
+
+def build_league_suggestions(fixtures_df: pd.DataFrame, strengths_df: pd.DataFrame, min_confidence: float = 0.6, rating_models: Dict = None, history_df: pd.DataFrame = None, rating_model_config: Dict = None) -> List[Dict]:
+    suggestions: List[Dict] = []
+    for _, row in fixtures_df.iterrows():
+        home = str(row['HomeTeam'])
+        away = str(row['AwayTeam'])
+        s = build_single_match_suggestion(home, away, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+        suggestions.append(s)
+    return suggestions
+
+
+def select_favorable_parlays(parlays: List[Dict], min_prob: float = 0.5, min_odds: float = 2.0) -> List[Dict]:
+    favorable = [p for p in parlays if p['probability'] > min_prob and p['decimal_odds'] > min_odds]
+    return sorted(favorable, key=lambda x: (x['probability'], x['decimal_odds']), reverse=True)[:10]
+
+
+def analyze_parsed_fixtures_all(parsed_df: pd.DataFrame, min_confidence: float, rating_models: Dict, history_df: pd.DataFrame, rating_model_config: Dict) -> Tuple[List[Dict], List[Dict]]:
+    suggestions: List[Dict] = []
+    skipped: List[Dict] = []
+    strengths_cache: Dict[str, pd.DataFrame] = {}
+    for _, row in parsed_df.iterrows():
+        home = str(row.get('HomeTeam', ''))
+        away = str(row.get('AwayTeam', ''))
+        # Try every known league until both teams exist
+        league_found = None
+        for code in LEAGUE_MAPPINGS.keys():
+            if code not in strengths_cache:
+                try:
+                    ldf = load_league_table(code)
+                    strengths_cache[code] = compute_basic_strengths(ldf)
+                except Exception:
+                    strengths_cache[code] = pd.DataFrame()
+            sdf = strengths_cache[code]
+            if sdf.empty or 'Team' not in sdf.columns:
+                continue
+            teams = set(str(t) for t in sdf['Team'].astype(str))
+            if home in teams and away in teams:
+                league_found = code
+                strengths = sdf
+                break
+        if not league_found:
+            skipped.append({'row': row.to_dict(), 'reason': 'no matching league/teams'})
+            continue
+        s = build_single_match_suggestion(home, away, strengths, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+        s['league_code'] = league_found
+        suggestions.append(s)
+    return suggestions, skipped
+
+
+def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parsed_all: bool = False, min_confidence: float = 0.6, risk_profile: str = 'moderate', rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3):
+    logging.info("Starting full league analytics workflow")
+    logging.info(f"Bankroll={bankroll}, League={league_code}, Rating={rating_model}")
+
+    # Load league and strengths
+    try:
+        league_df = load_league_table(league_code)
+    except Exception as e:
+        logging.error(f"Failed to load league table for {league_code}: {e}")
+        return
+    strengths_df = compute_basic_strengths(league_df)
+
+    # History and form blending
+    history_df = load_historical_matches()
+    if not history_df.empty:
+        try:
+            strengths_df = merge_form_into_strengths(strengths_df, history_df, last_n=6, decay=0.6, alpha=0.4)
+        except Exception:
+            logging.warning("Failed to blend recent form; continuing with season strengths")
+
+    # Rating models (optional)
+    rating_models = None
+    if rating_model and rating_model != 'none' and not history_df.empty:
+        try:
+            logging.info("Fitting rating-to-probability models from historical data...")
+            rating_models = fit_rating_to_prob_models(history_df, last_n=rating_last_n, min_sample_for_rating=min_sample_for_rating)
+            logging.info(f"Rating model fitted (samples={rating_models.get('sample_size', 0)})")
+        except Exception as e:
+            logging.warning(f"Failed to fit rating models: {e}")
+
+    rating_model_config = {
+        'model': rating_model,
+        'last_n': rating_last_n,
+        'blend_weight': rating_blend_weight,
+    }
+
+    # Fixtures selection
+    parsed_fixtures = load_parsed_fixtures()
+    if use_parsed_all and not parsed_fixtures.empty:
+        suggestions, skipped = analyze_parsed_fixtures_all(parsed_fixtures, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+        if skipped:
+            logging.info(f"Skipped {len(skipped)} parsed fixtures due to team/league mismatch")
+    else:
+        fixtures_df = None
+        if not parsed_fixtures.empty:
+            mapped, skipped = map_parsed_to_canonical(parsed_fixtures, strengths_df, league_code)
+            if not mapped.empty:
+                fixtures_df = mapped
+                if skipped:
+                    logging.info(f"Skipped {len(skipped)} parsed fixtures due to poor team matching")
+        if fixtures_df is None or fixtures_df.empty:
+            fixtures_df = load_upcoming_fixtures(league_code)
+        if fixtures_df.empty:
+            logging.warning("No fixtures available to analyze")
+            return
+        suggestions = build_league_suggestions(fixtures_df, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+
+    # Print suggestions
+    print(f"\n{Colors.CYAN}📊 Full League Match Suggestions for {league_code}:{Colors.RESET}")
+    for i, s in enumerate(suggestions, 1):
+        home, away = s['home'], s['away']
+        print(f"\n{Colors.YELLOW}Match {i}:{Colors.RESET} {Colors.BOLD}{home}{Colors.RESET} v {Colors.BOLD}{away}{Colors.RESET}")
+        print(f"  Estimated xG: {Colors.GREEN}{s['xg_home']:.2f}{Colors.RESET} - {Colors.GREEN}{s['xg_away']:.2f}{Colors.RESET}")
+        if s['picks']:
+            print(f"  {Colors.CYAN}Suggested Picks:{Colors.RESET}")
+            for p in s['picks']:
+                print(f"    {p['market']} {p['selection']}: {Colors.GREEN}{p['prob']*100:.1f}%{Colors.RESET} (odds {Colors.MAGENTA}{p['odds']:.2f}{Colors.RESET})")
+        else:
+            print(f"  {Colors.YELLOW}No high-confidence picks available{Colors.RESET}")
+
+    # Parlays across all suggestions
+    all_predictions = []
+    for s in suggestions:
+        for p in s['picks']:
+            all_predictions.append((s['home'], s['away'], p['prob'], p['odds']))
+    parlays = generate_parlays(all_predictions, min_size=2, max_size=3, max_results=50)
+    favorable_parlays = select_favorable_parlays(parlays)
+
+    print(f"\n{Colors.CYAN}🎲 Top Favorable Parlays:{Colors.RESET}")
+    for p in favorable_parlays:
+        slip = format_bet_slip(p, bankroll=bankroll)
+        print(f"- Legs ({p['size']}): {p['legs']}")
+        print(f"  Prob: {Colors.GREEN}{p['probability']*100:.2f}%{Colors.RESET}, Odds: {Colors.MAGENTA}{p['decimal_odds']:.2f}{Colors.RESET}, Stake: {Colors.YELLOW}{slip['stake_suggestion']}{Colors.RESET}, Return: {Colors.GREEN}{slip['potential_return']}{Colors.RESET}")
+
+    # Save results
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    os.makedirs(DATA_DIR, exist_ok=True)
+    out_path = os.path.join(DATA_DIR, f'full_league_suggestions_{league_code}_{timestamp}.json')
+    with open(out_path, 'w') as f:
+        json.dump({'suggestions': suggestions, 'favorable_parlays': favorable_parlays}, f, default=lambda o: o.tolist() if isinstance(o, np.ndarray) else str(o))
+    logging.info(f"Saved results to: {out_path}")
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Football analytics assistant (full league)')
+    parser.add_argument('--bankroll', type=float, default=100.0, help='Estimated bankroll for stake suggestions')
+    parser.add_argument('--league', type=str, default='E0', help='League code (e.g., E0, D1, SP1)')
+    parser.add_argument('--use-parsed-all', action='store_true', help='Analyze all parsed fixtures across leagues if available')
+    parser.add_argument('--min-confidence', type=float, default=0.6, help='Minimum market probability to surface')
+    parser.add_argument('--risk-profile', type=str, default='moderate', choices=['conservative', 'moderate', 'aggressive'], help='Risk profile label (display only)')
+    parser.add_argument('--rating-model', type=str, default='none', choices=['none', 'goal_supremacy', 'blended'], help='Rating model for 1X2 probabilities')
+    parser.add_argument('--rating-last-n', type=int, default=6, help='Number of recent matches for goal supremacy rating')
+    parser.add_argument('--min-sample-for-rating', type=int, default=30, help='Minimum sample size to fit rating models')
+    parser.add_argument('--rating-blend-weight', type=float, default=0.3, help='Blend weight when using blended model (0..1)')
+    args = parser.parse_args()
+
+    main_full_league(
+        bankroll=args.bankroll,
+        league_code=args.league,
+        use_parsed_all=args.use_parsed_all,
+        min_confidence=args.min_confidence,
+        risk_profile=args.risk_profile,
+        rating_model=args.rating_model,
+        rating_last_n=args.rating_last_n,
+        min_sample_for_rating=args.min_sample_for_rating,
+        rating_blend_weight=args.rating_blend_weight,
+    )
