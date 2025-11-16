@@ -54,6 +54,33 @@ def load_results(path: Path):
         return rows
 
 
+def load_results_with_odds(path: Path):
+    if not path.exists():
+        raise FileNotFoundError(path)
+    if path.suffix.lower() == ".json":
+        with path.open() as f:
+            return json.load(f)
+    else:
+        rows = []
+        with path.open() as f:
+            reader = csv.DictReader(f)
+            for r in reader:
+                # normalize keys
+                rows.append({
+                    "date": r.get("date") or r.get("match_date") or r.get("Date"),
+                    "home": r.get("home") or r.get("Home"),
+                    "away": r.get("away") or r.get("Away"),
+                    "home_score": int(r.get("home_score") or r.get("HomeScore") or r.get("home_goals") or 0),
+                    "away_score": int(r.get("away_score") or r.get("AwayScore") or r.get("away_goals") or 0),
+                    "odds": {
+                        "home_win": float(r.get("B365H") or 0),
+                        "draw": float(r.get("B365D") or 0),
+                        "away_win": float(r.get("B365A") or 0),
+                    }
+                })
+        return rows
+
+
 def find_result_for(match, results):
     # match: dict with home/away, optional date
     h = match.get("home", "").lower()
@@ -169,6 +196,19 @@ def parlay_diagnostics(suggestions, min_prob=0.6):
         if p.get("odds"):
             expected_odds *= float(p.get("odds"))
     return {"picks_in_parlay": len(picks), "parlay_prob": parlay_prob, "expected_odds": expected_odds, "picks": picks}
+
+
+def calculate_implied_probabilities(odds: Dict[str, float]) -> Dict[str, float]:
+    """Calculate implied probabilities from betting odds."""
+    probabilities = {}
+    for outcome, odd in odds.items():
+        if odd > 0:
+            probabilities[outcome] = 1 / odd
+    total_prob = sum(probabilities.values())
+    # Normalize probabilities to sum to 1
+    for outcome in probabilities:
+        probabilities[outcome] /= total_prob
+    return probabilities
 
 
 # ---------------- Rating-model backtest additions ----------------
@@ -309,6 +349,7 @@ def main():
     parser.add_argument("--history-dir", type=str, default="data/old csv", help="Directory with historical CSVs")
     parser.add_argument("--rating-last-n", type=int, default=6, help="Matches to use for goal-supremacy rating")
     parser.add_argument("--rating-bins", type=str, default="-10,-6,-4,-2,-1,0,1,2,4,6,10", help="Comma-separated rating bin edges")
+    parser.add_argument("--include-odds", action="store_true", help="Include odds analysis.")
 
     args = parser.parse_args()
 
@@ -318,7 +359,13 @@ def main():
     suggestions = load_suggestions(sug_path)
     results = []
     if res_path:
-        results = load_results(res_path)
+        if args.include_odds:
+            results = load_results_with_odds(res_path)
+            for result in results:
+                if "odds" in result:
+                    result["implied_probabilities"] = calculate_implied_probabilities(result["odds"])
+        else:
+            results = load_results(res_path)
     else:
         print("No results file provided. To evaluate accuracy provide --results <path>")
 

@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Project root
+PROJ_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJ_DIR"
+
+# Ensure virtualenv exists and is initialized
+if [[ ! -x .venv/bin/python ]]; then
+  echo "[fa-cli] Creating virtualenv in .venv..."
+  python3 -m venv .venv
+  echo "[fa-cli] Installing dependencies..."
+  .venv/bin/pip install -U pip setuptools wheel
+  .venv/bin/pip install -r requirements.txt
+fi
+
+export PYTHONPATH="$PROJ_DIR:${PYTHONPATH:-}"
+
+# Default to CLI entrypoint
+exec .venv/bin/python cli.py "$@"

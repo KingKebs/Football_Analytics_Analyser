@@ -1,0 +1,42 @@
+# Football Analytics Analyser - Configuration
+# Copy this to config.yaml and customize
+
+# Analysis Settings
+analysis:
+  league: 'E0'  # Default league
+  season: 'AUTO'  # or specific season like '2024-25'
+  rating_model: 'blended'  # blended | poisson | xg
+  blend_weight: 0.3  # Form blending (0.0-1.0)
+  last_n_matches: 6  # Recent matches to consider
+
+# Data Settings
+data:
+  data_dir: 'data'
+  football_data_dir: 'football-data'
+  archive_old_files: true
+  archive_threshold_days: 7
+
+# Output Settings
+output:
+  format: 'json'  # json | csv | html | text
+  save_all_results: true
+  save_manifests: true
+
+# Logging Settings
+logging:
+  level: 'INFO'  # DEBUG | INFO | WARNING | ERROR
+  log_dir: 'logs'
+  preserve_logs: true
+  max_log_size_mb: 100
+
+# Corners Analysis
+corners:
+  enabled: true
+  estimate_half_splits: true
+  save_team_stats: true
+
+# Advanced Options
+advanced:
+  dry_run: false
+  verbose: false
+  parallel_analysis: false

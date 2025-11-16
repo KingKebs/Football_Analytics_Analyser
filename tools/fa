@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+cd "$PROJ_DIR"
+exec .venv/bin/python "$@"
+# Run requested Python target with the venv's interpreter
+
+export PYTHONPATH="$PROJ_DIR:${PYTHONPATH:-}"
+# Ensure PYTHONPATH includes project root
+
+fi
+  .venv/bin/pip install -r requirements.txt
+  .venv/bin/pip install -U pip setuptools wheel
+  echo "[fa] Installing dependencies..."
+  python3 -m venv .venv
+  echo "[fa] Creating virtualenv in .venv..."
+if [[ ! -x .venv/bin/python ]]; then
+# Ensure virtualenv exists and is initialized
+PROJ_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Project root
+
+set -euo pipefail
+

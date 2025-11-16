@@ -7,6 +7,12 @@ End-to-end workflow for a full league round:
 - Build suggestions for all fixtures in the round
 - Generate and select favorable parlays across all matches
 - Save results to data/
+Optional ML Mode (Steps 1-4):
+- Feature engineering from historical matches
+- Recency weighting
+- Train RF / XGB models for Total Goals (regression), 1X2, BTTS
+- 5-fold cross-validation metrics
+- Compare ML predictions vs Poisson baseline
 """
 
 import os
@@ -14,12 +20,43 @@ import json
 import argparse
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
+import re
 
 import numpy as np
 import pandas as pd
 import logging
 import glob
 import difflib
+
+# ML imports (lazy inside functions to avoid mandatory dependency if ML not used)
+try:
+    from ml_features import engineer_features, build_match_feature_row, TRAIN_FEATURE_COLUMNS
+    from ml_utils import build_recency_weights, save_models, check_min_samples
+    from ml_training import train_models, predict_match
+    from ml_evaluation import evaluate_vs_poisson
+except Exception:
+    # Defer import errors until ML mode actually used
+    engineer_features = build_match_feature_row = TRAIN_FEATURE_COLUMNS = None
+    build_recency_weights = save_models = check_min_samples = None
+    train_models = predict_match = evaluate_vs_poisson = None
+
+
+# Range filter parser
+_DEF_RANGE = None
+
+def _parse_range_filter(s: str):
+    if not s:
+        return None
+    try:
+        parts = [p.strip() for p in s.split(',') if p.strip()]
+        if len(parts) != 2:
+            return None
+        lo, hi = float(parts[0]), float(parts[1])
+        if lo > hi:
+            lo, hi = hi, lo
+        return (lo, hi)
+    except Exception:
+        return None
 
 # Algorithms
 from algorithms import (
@@ -277,17 +314,54 @@ def load_parsed_fixtures(date_str: str = None, data_dir: str = DATA_DIR) -> pd.D
     return df[['Date', 'League', 'Competition', 'HomeTeam', 'AwayTeam']]
 
 
+TEAM_ALIASES = {
+    # Premier League / E0 common short forms
+    "nottingham": "Nott'm Forest",
+    "nottm forest": "Nott'm Forest",
+    "man city": "Man City",
+    "man utd": "Man United",
+    "manchester united": "Man United",
+    "manchester city": "Man City",
+    "spurs": "Tottenham",
+    "wolves": "Wolves",
+    "west ham": "West Ham",
+    "brighton": "Brighton",
+    "aston villa": "Aston Villa",
+    # Spain examples (extendable)
+    "ath bilbao": "Ath Bilbao",
+    "real madrid": "Real Madrid",
+    # Italy, Germany etc can be added similarly
+}
+
+
 def _canonicalize_team(name: str, team_list: List[str]) -> Tuple[str, float]:
     if not name:
         return '', 0.0
     name_norm = str(name).strip()
+    low = name_norm.lower()
+    # apply alias first
+    if low in TEAM_ALIASES:
+        target = TEAM_ALIASES[low]
+        # exact match check
+        for t in team_list:
+            if t.lower() == target.lower():
+                return t, 1.0
+    # exact direct match
     for t in team_list:
         if name_norm.lower() == str(t).strip().lower():
             return t, 1.0
-    candidates = difflib.get_close_matches(name_norm, [str(t) for t in team_list], n=1, cutoff=0.6)
+    # stricter fuzzy matching: high cutoff and first letter must match
+    candidates = []
+    import difflib as _df
+    rough = _df.get_close_matches(name_norm, [str(t) for t in team_list], n=3, cutoff=0.75)
+    for cand in rough:
+        if cand and cand[0].lower() == name_norm[0].lower():
+            score = _df.SequenceMatcher(a=name_norm.lower(), b=cand.lower()).ratio()
+            if score >= 0.85:
+                candidates.append((cand, score))
     if candidates:
-        score = difflib.SequenceMatcher(a=name_norm.lower(), b=candidates[0].lower()).ratio()
-        return candidates[0], score
+        best = max(candidates, key=lambda x: x[1])
+        return best[0], best[1]
     return '', 0.0
 
 
@@ -323,21 +397,25 @@ def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: 
     if rating_models and rating_model_config and rating_model_config.get('model', 'none') != 'none' and history_df is not None:
         try:
             r = match_rating(home_team, away_team, history_df, int(rating_model_config.get('last_n', 6)))
-            pH_r, pD_r, pA_r = rating_probabilities_from_rating(r, rating_models)
-            if rating_model_config.get('model') == 'goal_supremacy':
-                external_probs = {'1X2': {'Home': pH_r, 'Draw': pD_r, 'Away': pA_r}}
-            elif rating_model_config.get('model') == 'blended':
-                # derive Poisson 1X2
-                poisson_all = extract_markets_from_score_matrix(mat, min_confidence=0.0)
-                p1 = poisson_all.get('1X2', {})
-                w = float(rating_model_config.get('blend_weight', 0.3))
-                pH_p, pD_p, pA_p = float(p1.get('Home', 0.0)), float(p1.get('Draw', 0.0)), float(p1.get('Away', 0.0))
-                bH = (1 - w) * pH_p + w * pH_r
-                bD = (1 - w) * pD_p + w * pD_r
-                bA = (1 - w) * pA_p + w * pA_r
-                s = bH + bD + bA
-                if s > 0:
-                    external_probs = {'1X2': {'Home': bH / s, 'Draw': bD / s, 'Away': bA / s}}
+            rng = rating_model_config.get('range_filter')
+            if rng and not (rng[0] < r <= rng[1]):
+                r = None
+            if r is not None:
+                pH_r, pD_r, pA_r = rating_probabilities_from_rating(r, rating_models)
+                if rating_model_config.get('model') == 'goal_supremacy':
+                    external_probs = {'1X2': {'Home': pH_r, 'Draw': pD_r, 'Away': pA_r}}
+                elif rating_model_config.get('model') == 'blended':
+                    # derive Poisson 1X2
+                    poisson_all = extract_markets_from_score_matrix(mat, min_confidence=0.0)
+                    p1 = poisson_all.get('1X2', {})
+                    w = float(rating_model_config.get('blend_weight', 0.3))
+                    pH_p, pD_p, pA_p = float(p1.get('Home', 0.0)), float(p1.get('Draw', 0.0)), float(p1.get('Away', 0.0))
+                    bH = (1 - w) * pH_p + w * pH_r
+                    bD = (1 - w) * pD_p + w * pD_r
+                    bA = (1 - w) * pA_p + w * pA_r
+                    s = bH + bD + bA
+                    if s > 0:
+                        external_probs = {'1X2': {'Home': bH / s, 'Draw': bD / s, 'Away': bA / s}}
         except Exception:
             pass
 
@@ -424,9 +502,53 @@ def analyze_parsed_fixtures_all(parsed_df: pd.DataFrame, min_confidence: float, 
     return suggestions, skipped
 
 
-def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parsed_all: bool = False, min_confidence: float = 0.6, risk_profile: str = 'moderate', rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3):
+def parse_input_log(path: str) -> pd.DataFrame:
+    """Parse a plain text match log to extract pairs of teams.
+    Supports lines like:
+      Match 1: TeamA v TeamB
+      TeamA vs TeamB
+      TeamA - TeamB
+    Returns DataFrame(Date, HomeTeam, AwayTeam)
+    """
+    if not path or not os.path.isfile(path):
+        return pd.DataFrame()
+    rows = []
+    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+        for line in f:
+            raw = line.strip()
+            if not raw:
+                continue
+            # Drop timestamps or prefixes like "[13:45:24]" or "Match 1:" etc.
+            raw = re.sub(r"^\[\d{2}:\d{2}:\d{2}\]\s*", "", raw)
+            raw = re.sub(r"^(?:match\s*\d*[:\-]?\s*)", "", raw, flags=re.IGNORECASE)
+            # Try common separators
+            parts = None
+            for sep in [' v ', ' vs ', ' VS ', ' Vs ', ' - ', ' @ ']:
+                if sep in raw:
+                    parts = [p.strip() for p in raw.split(sep) if p.strip()]
+                    break
+            if parts is None:
+                m = re.match(r"^(.*?)\s+v(?:s)?\s+(.*)$", raw, flags=re.IGNORECASE)
+                if m:
+                    parts = [m.group(1).strip(), m.group(2).strip()]
+            if not parts or len(parts) != 2:
+                continue
+            home, away = parts
+            # Filter out obvious non-team lines
+            if not home or not away or len(home) < 2 or len(away) < 2:
+                continue
+            rows.append({'HomeTeam': home, 'AwayTeam': away})
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    df['Date'] = pd.Timestamp.now(tz='UTC')
+    return df[['Date','HomeTeam','AwayTeam']]
+
+
+def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parsed_all: bool = False, min_confidence: float = 0.6, risk_profile: str = 'moderate', rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, rating_range_filter=None,
+                     ml_mode: str = 'off', ml_validate: bool = False, ml_algorithms: List[str] = None, ml_decay: float = 0.85, ml_min_samples: int = 300, ml_save_models: bool = False, ml_models_dir: str = 'models', input_log: str = None):
     logging.info("Starting full league analytics workflow")
-    logging.info(f"Bankroll={bankroll}, League={league_code}, Rating={rating_model}")
+    logging.info(f"Bankroll={bankroll}, League={league_code}, Rating={rating_model}, ML_Mode={ml_mode}")
 
     # Load league and strengths
     try:
@@ -458,11 +580,65 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
         'model': rating_model,
         'last_n': rating_last_n,
         'blend_weight': rating_blend_weight,
+        'range_filter': rating_range_filter,
     }
 
-    # Fixtures selection
+    # --- ML Training Phase (optional) ---
+    ml_models = None
+    ml_feature_df = None
+    if ml_mode in ('train','predict'):
+        if engineer_features is None:
+            logging.warning("ML modules not available - ensure dependencies installed (scikit-learn, optional xgboost)")
+        elif history_df.empty:
+            logging.warning("No historical data available for ML training; skipping ML mode")
+        else:
+            try:
+                ml_feature_df = engineer_features(history_df)
+                weights = build_recency_weights(ml_feature_df['Date'].values, decay=ml_decay) if build_recency_weights else None
+                if not check_min_samples(ml_feature_df, ml_min_samples):
+                    logging.warning(f"Insufficient samples for ML (need >= {ml_min_samples}, have {len(ml_feature_df)}); skipping ML")
+                else:
+                    algos = ml_algorithms or ['rf','xgb']
+                    ml_models = train_models(ml_feature_df, weights=weights, algorithms=algos)
+                    if ml_validate:
+                        logging.info("ML Cross-Validation Metrics:")
+                        for k,v in ml_models.get('cv_metrics', {}).items():
+                            logging.info(f"  {k}: {v}")
+                    if ml_save_models:
+                        ts = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+                        path = os.path.join(ml_models_dir, f"ml_models_{league_code}_{ts}.pkl")
+                        try:
+                            save_models(ml_models, path)
+                        except Exception as e:
+                            logging.warning(f"Failed to save ML models: {e}")
+            except Exception as e:
+                logging.warning(f"ML training failed: {e}")
+
+    # --- Source fixtures logic with input log override ---
     parsed_fixtures = load_parsed_fixtures()
-    if use_parsed_all and not parsed_fixtures.empty:
+    log_df = parse_input_log(input_log) if input_log else pd.DataFrame()
+
+    if not log_df.empty:
+        # Filter only those matches whose teams exist in strengths for this league (with canonicalization)
+        league_teams = list(str(t) for t in strengths_df['Team'].astype(str))
+        matched_rows = []
+        skipped_rows = []
+        for _, r in log_df.iterrows():
+            h_raw, a_raw = str(r['HomeTeam']).strip(), str(r['AwayTeam']).strip()
+            h_can, h_score = _canonicalize_team(h_raw, league_teams)
+            a_can, a_score = _canonicalize_team(a_raw, league_teams)
+            if h_score >= 0.7 and a_score >= 0.7:
+                matched_rows.append({'Date': r['Date'], 'HomeTeam': h_can, 'AwayTeam': a_can})
+            else:
+                skipped_rows.append({'HomeTeam': h_raw, 'AwayTeam': a_raw, 'home_match': (h_can, h_score), 'away_match': (a_can, a_score)})
+        if matched_rows:
+            fixtures_df = pd.DataFrame(matched_rows)
+            suggestions = build_league_suggestions(fixtures_df, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+            logging.info(f"Input log matches used: {len(fixtures_df)} (skipped {len(skipped_rows)})")
+        else:
+            logging.warning("No valid matches from input log for this league; falling back to standard fixture logic")
+            fixtures_df = None
+    elif use_parsed_all and not parsed_fixtures.empty:
         suggestions, skipped = analyze_parsed_fixtures_all(parsed_fixtures, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
         if skipped:
             logging.info(f"Skipped {len(skipped)} parsed fixtures due to team/league mismatch")
@@ -481,7 +657,24 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
             return
         suggestions = build_league_suggestions(fixtures_df, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
 
-    # Print suggestions
+    # --- ML Prediction Augmentation ---
+    if ml_models and ml_mode == 'predict' and ml_feature_df is not None:
+        enriched = []
+        for s in suggestions:
+            home, away = s['home'], s['away']
+            feat_row_dict = build_match_feature_row(ml_feature_df, home, away)
+            feature_vector = np.array([feat_row_dict[c] for c in TRAIN_FEATURE_COLUMNS], dtype=float).reshape(1,-1)
+            ml_pred = predict_match(ml_models, feature_vector)
+            # Recompute baseline markets directly from xG (avoids reconstructing matrix from dict)
+            mat = score_probability_matrix(s['xg_home'], s['xg_away'], max_goals=6)
+            baseline_full = extract_markets_from_score_matrix(mat, min_confidence=0.0)
+            comparison = evaluate_vs_poisson(baseline_full, ml_pred)
+            s['ml_prediction'] = ml_pred
+            s['ml_vs_poisson'] = comparison
+            enriched.append(s)
+        suggestions = enriched
+
+    # Print suggestions (extended output for ML)
     print(f"\n{Colors.CYAN}📊 Full League Match Suggestions for {league_code}:{Colors.RESET}")
     for i, s in enumerate(suggestions, 1):
         home, away = s['home'], s['away']
@@ -493,8 +686,25 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
                 print(f"    {p['market']} {p['selection']}: {Colors.GREEN}{p['prob']*100:.1f}%{Colors.RESET} (odds {Colors.MAGENTA}{p['odds']:.2f}{Colors.RESET})")
         else:
             print(f"  {Colors.YELLOW}No high-confidence picks available{Colors.RESET}")
+        if 'ml_prediction' in s:
+            mp = s['ml_prediction']
+            comp = s.get('ml_vs_poisson', {})
+            tg = mp.get('pred_total_goals')
+            if tg is not None:
+                print(f"  {Colors.MAGENTA}ML Total Goals:{Colors.RESET} {tg:.2f} (model {mp.get('pred_total_goals_model','-')})")
+            else:
+                print(f"  {Colors.MAGENTA}ML Total Goals:{Colors.RESET} -")
+            print(f"  {Colors.MAGENTA}ML 1X2 probs:{Colors.RESET} H={mp.get('prob_1x2_home',0):.2f} D={mp.get('prob_1x2_draw',0):.2f} A={mp.get('prob_1x2_away',0):.2f} (model {mp.get('model_1x2','-')})")
+            print(f"  {Colors.MAGENTA}ML BTTS probs:{Colors.RESET} Yes={mp.get('prob_btts_yes',0):.2f} No={mp.get('prob_btts_no',0):.2f} (model {mp.get('model_btts','-')})")
+            if comp:
+                c1 = comp.get('1X2', {})
+                if c1:
+                    print(f"    Δ1X2: H={c1.get('delta_home',0):+.2f} D={c1.get('delta_draw',0):+.2f} A={c1.get('delta_away',0):+.2f}")
+                cb = comp.get('BTTS', {})
+                if cb:
+                    print(f"    ΔBTTS: Yes={cb.get('delta_yes',0):+.2f} No={cb.get('delta_no',0):+.2f}")
 
-    # Parlays across all suggestions
+    # Parlays across all suggestions (unchanged)
     all_predictions = []
     for s in suggestions:
         for p in s['picks']:
@@ -517,10 +727,36 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
     logging.info(f"Saved results to: {out_path}")
 
 
+def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None, use_parsed_all: bool = False, min_confidence: float = 0.6, risk_profile: str = 'moderate', rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, rating_range_filter=None,
+                              ml_mode: str = 'off', ml_validate: bool = False, ml_algorithms: List[str] = None, ml_decay: float = 0.85, ml_min_samples: int = 300, ml_save_models: bool = False, ml_models_dir: str = 'models', input_log: str = None):
+    if leagues is None:
+        leagues = ['E0']
+    for league_code in leagues:
+        logging.info(f"Processing league: {league_code}")
+        main_full_league(
+            bankroll=bankroll,
+            league_code=league_code,
+            use_parsed_all=use_parsed_all,
+            min_confidence=min_confidence,
+            risk_profile=risk_profile,
+            rating_model=rating_model,
+            rating_last_n=rating_last_n,
+            min_sample_for_rating=min_sample_for_rating,
+            rating_blend_weight=rating_blend_weight,
+            rating_range_filter=rating_range_filter,
+            ml_mode=ml_mode,
+            ml_validate=ml_validate,
+            ml_algorithms=ml_algorithms,
+            ml_decay=ml_decay,
+            ml_min_samples=ml_min_samples,
+            ml_save_models=ml_save_models,
+            ml_models_dir=ml_models_dir,
+            input_log=input_log
+        )
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Football analytics assistant (full league)')
     parser.add_argument('--bankroll', type=float, default=100.0, help='Estimated bankroll for stake suggestions')
-    parser.add_argument('--league', type=str, default='E0', help='League code (e.g., E0, D1, SP1)')
     parser.add_argument('--use-parsed-all', action='store_true', help='Analyze all parsed fixtures across leagues if available')
     parser.add_argument('--min-confidence', type=float, default=0.6, help='Minimum market probability to surface')
     parser.add_argument('--risk-profile', type=str, default='moderate', choices=['conservative', 'moderate', 'aggressive'], help='Risk profile label (display only)')
@@ -528,11 +764,29 @@ if __name__ == '__main__':
     parser.add_argument('--rating-last-n', type=int, default=6, help='Number of recent matches for goal supremacy rating')
     parser.add_argument('--min-sample-for-rating', type=int, default=30, help='Minimum sample size to fit rating models')
     parser.add_argument('--rating-blend-weight', type=float, default=0.3, help='Blend weight when using blended model (0..1)')
+    parser.add_argument('--league', type=str, help='Single league code (alias for --leagues)')
+    parser.add_argument('--leagues', type=str, default='E0,D1,SP1,F1,I1,B1,P1', help='Comma-separated league codes (e.g., E0,D1,SP1)')
+    parser.add_argument('--rating-range-filter', type=str, help='Comma-separated rating range (lo,hi); skip rating override when rating outside range')
+    parser.add_argument('--ml-mode', type=str, default='off', choices=['off','train','predict'], help='ML mode: off/train/predict')
+    parser.add_argument('--ml-validate', action='store_true', help='Print cross-validation metrics for ML models')
+    parser.add_argument('--ml-algorithms', type=str, default='rf,xgb', help='Comma-separated algorithms to train (rf,xgb)')
+    parser.add_argument('--ml-decay', type=float, default=0.85, help='Recency decay factor for sample weights (0<decay<=1)')
+    parser.add_argument('--ml-min-samples', type=int, default=300, help='Minimum samples required to run ML training')
+    parser.add_argument('--ml-save-models', action='store_true', help='Persist trained ML models to disk')
+    parser.add_argument('--ml-models-dir', type=str, default='models', help='Directory to save ML model pickles')
+    parser.add_argument('--input-log', type=str, help='Path to match log to restrict fixtures (lines like "TeamA v TeamB")')
     args = parser.parse_args()
-
-    main_full_league(
+    # League alias handling
+    leagues_arg = args.leagues
+    if args.league and not leagues_arg:
+        leagues_arg = args.league
+    if args.league and args.league not in leagues_arg.split(','):
+        leagues_arg = args.league  # override for single league usage
+    leagues_to_run = [league.strip() for league in leagues_arg.split(',')]
+    ml_algos_list = [a.strip() for a in args.ml_algorithms.split(',') if a.strip()]
+    main_full_league_multiple(
         bankroll=args.bankroll,
-        league_code=args.league,
+        leagues=leagues_to_run,
         use_parsed_all=args.use_parsed_all,
         min_confidence=args.min_confidence,
         risk_profile=args.risk_profile,
@@ -540,4 +794,65 @@ if __name__ == '__main__':
         rating_last_n=args.rating_last_n,
         min_sample_for_rating=args.min_sample_for_rating,
         rating_blend_weight=args.rating_blend_weight,
+        rating_range_filter=_parse_range_filter(args.rating_range_filter) if args.rating_range_filter else None,
+        ml_mode=args.ml_mode,
+        ml_validate=args.ml_validate,
+        ml_algorithms=ml_algos_list,
+        ml_decay=args.ml_decay,
+        ml_min_samples=args.ml_min_samples,
+        ml_save_models=args.ml_save_models,
+        ml_models_dir=args.ml_models_dir,
+        input_log=args.input_log or args.league if False else args.input_log  # pass through
+    )
+
+# Provide a callable main for external CLI compatibility
+
+def main(argv=None):
+    if argv is None:
+        argv = []
+    parser = argparse.ArgumentParser(description='Football analytics assistant (full league)')
+    parser.add_argument('--bankroll', type=float, default=100.0)
+    parser.add_argument('--use-parsed-all', action='store_true')
+    parser.add_argument('--min-confidence', type=float, default=0.6)
+    parser.add_argument('--risk-profile', type=str, default='moderate', choices=['conservative','moderate','aggressive'])
+    parser.add_argument('--rating-model', type=str, default='none', choices=['none','goal_supremacy','blended'])
+    parser.add_argument('--rating-last-n', type=int, default=6)
+    parser.add_argument('--min-sample-for-rating', type=int, default=30)
+    parser.add_argument('--rating-blend-weight', type=float, default=0.3)
+    parser.add_argument('--league', type=str)
+    parser.add_argument('--leagues', type=str, default='E0')
+    parser.add_argument('--rating-range-filter', type=str)
+    parser.add_argument('--ml-mode', type=str, default='off', choices=['off','train','predict'])
+    parser.add_argument('--ml-validate', action='store_true')
+    parser.add_argument('--ml-algorithms', type=str, default='rf,xgb')
+    parser.add_argument('--ml-decay', type=float, default=0.85)
+    parser.add_argument('--ml-min-samples', type=int, default=300)
+    parser.add_argument('--ml-save-models', action='store_true')
+    parser.add_argument('--ml-models-dir', type=str, default='models')
+    parser.add_argument('--input-log', type=str)
+    parsed = parser.parse_args(argv)
+    leagues_arg = parsed.leagues or parsed.league or 'E0'
+    if parsed.league and parsed.league not in leagues_arg.split(','):
+        leagues_arg = parsed.league
+    leagues_to_run = [l.strip() for l in leagues_arg.split(',') if l.strip()]
+    ml_algos_list = [a.strip() for a in parsed.ml_algorithms.split(',') if a.strip()]
+    main_full_league_multiple(
+        bankroll=parsed.bankroll,
+        leagues=leagues_to_run,
+        use_parsed_all=parsed.use_parsed_all,
+        min_confidence=parsed.min_confidence,
+        risk_profile=parsed.risk_profile,
+        rating_model=parsed.rating_model,
+        rating_last_n=parsed.rating_last_n,
+        min_sample_for_rating=parsed.min_sample_for_rating,
+        rating_blend_weight=parsed.rating_blend_weight,
+        rating_range_filter=_parse_range_filter(parsed.rating_range_filter) if parsed.rating_range_filter else None,
+        ml_mode=parsed.ml_mode,
+        ml_validate=parsed.ml_validate,
+        ml_algorithms=ml_algos_list,
+        ml_decay=parsed.ml_decay,
+        ml_min_samples=parsed.ml_min_samples,
+        ml_save_models=parsed.ml_save_models,
+        ml_models_dir=parsed.ml_models_dir,
+        input_log=parsed.input_log
     )

@@ -368,6 +368,7 @@ def main_interactive(bankroll: float = 100.0, league_code: str = None, rating_mo
         'model': rating_model,
         'last_n': rating_last_n,
         'blend_weight': rating_blend_weight,
+        'range_filter': rng,
     }
 
     suggestion = build_single_match_suggestion(home, away, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)

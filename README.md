@@ -1,192 +1,158 @@
 # Football Analytics Analyser
 
-A sophisticated football betting analysis system using statistical modeling and machine learning techniques.
+This project provides tools for analyzing football data, generating predictions, and evaluating betting strategies. It includes scripts for downloading data, organizing structures, and visualizing results.
 
-## Features
+## Quick start
 
-- **Multi-League Support**: Analyze 25+ European leagues including EPL, Bundesliga, La Liga, Serie A, etc.
-- **Full League Analysis**: Analyze entire league rounds, generate parlays for upcoming games
-- **Advanced Algorithms**: 11 core algorithms including Poisson distribution, Kelly criterion, and xG modeling
-- **Recent Form Analysis**: Exponential decay weighting of recent matches
-- **Smart Caching**: Rate-limited data fetching to respect API limits
-- **Conservative Betting**: Designed for small-stakes punters with risk management
+```bash
+# Analyze a full league round for EPL (E0)
+python3 automate_football_analytics_fullLeague.py --league E0 --rating-model blended --rating-blend-weight 0.3 --rating-last-n 6
 
-## Installation
+# Analyze multiple leagues (e.g., EPL, La Liga, Bundesliga)
+python3 automate_football_analytics_fullLeague.py --league E0,SP1,D1 --rating-model blended --rating-blend-weight 0.3 --rating-last-n 6
 
+# Download league data
+python3 download_all_tabs.py --download-football-data --leagues E0 --seasons AUTO
+```
+
+## How it works
+- The `automate_football_analytics_fullLeague.py` script analyzes league data to generate predictions and betting suggestions.
+- The `download_all_tabs.py` script fetches league CSVs from football-data.co.uk into `football-data/all-euro-football/`.
+- The `organize_structure.py` script organizes downloaded data into a structured format for analysis.
+
+## Output
+- Analysis results: `data/full_league_suggestions_<LEAGUE>_<TIMESTAMP>.json`
+- Downloaded league data: `football-data/all-euro-football/<LEAGUE>_<SEASON>.csv`
+- Latest alias: `football-data/all-euro-football/<LEAGUE>.csv`
+
+## Notes
+- Install dependencies via `pip install -r requirements.txt`.
+- Use `--dry-run` to preview actions without downloading or writing files.
+- The project supports multiple leagues and seasons for comprehensive analysis.
+
+## Full League ML Mode (Goal Markets)
+The full league script now supports an optional Machine Learning mode for goal-based markets (Steps 1–4):
+- Feature engineering (rolling form, interaction terms, ratios, basic event stats if present)
+- Recency weighting (exponential decay) applied as sample weights
+- Model training with RandomForest (always) and optional XGBoost (if installed)
+- 5-fold cross-validation metrics for regression (Total Goals) and classification (1X2, BTTS)
+- Per-fixture prediction augmentation and comparison vs Poisson baseline probabilities
+
+### Installation Notes
+Make sure the following are installed:
 ```bash
 pip install -r requirements.txt
 ```
+XGBoost is optional. If not installed, ML mode will fall back to RandomForest only and log an informational message.
 
-## Usage
+### Enabling ML Mode
+Use the new flags on `automate_football_analytics_fullLeague.py` or via the unified CLI.
 
+Minimal train-only run (no predictions augmentation):
 ```bash
-python automate_football_analytics.py
+python3 automate_football_analytics_fullLeague.py \
+  --leagues E0 \
+  --ml-mode train \
+  --ml-validate
 ```
 
-The system will prompt you to select a league and teams for analysis.
-
-### Full League Analysis
-
+Train + Save models:
 ```bash
-python automate_football_analytics_fullLeague.py --league E0 --bankroll 100
+python3 automate_football_analytics_fullLeague.py \
+  --leagues E0 \
+  --ml-mode train \
+  --ml-validate \
+  --ml-save-models \
+  --ml-models-dir models
 ```
 
-This script analyzes all upcoming matches in the selected league, generates suggestions for each match, and selects favorable parlays with low risk and high returns.
-
-### Web Output Examples
-
+Predict (augment suggestions with ML outputs):
 ```bash
-python web_output_examples.py
+python3 automate_football_analytics_fullLeague.py \
+  --leagues E0 \
+  --ml-mode predict \
+  --ml-validate
 ```
 
-This script demonstrates various ways to format the full league analysis results for web applications, including JSON API responses, HTML dashboards, and CSV exports.
-
-## Supported Leagues
-
-- **English**: Premier League (E0), Championship (E1), League One (E2), League Two (E3)
-- **German**: Bundesliga (D1), 2. Bundesliga (D2)
-- **Spanish**: La Liga (SP1), Segunda División (SP2)
-- **Italian**: Serie A (I1), Serie B (I2)
-- **French**: Ligue 1 (F1), Ligue 2 (F2)
-- **Portuguese**: Primeira Liga (P1)
-- **Dutch**: Eredivisie (N1)
-- **Scottish**: Premiership (SC0), Championship (SC1), League One (SC2), League Two (SC3)
-- **Belgian**: Pro League (B1)
-- **Greek**: Super League (G1)
-- **Turkish**: Süper Lig (T1)
-
-## Project Structure
-
-```
-Football_Analytics_Analyser/
-├── README.md
-├── README_Downloader_Script.md
-├── ALGORITHMS.md
-├── requirements.txt
-├── organize_structure.sh
-├── organize_structure.py
-├── web_output_examples.py
-├── algorithms.py
-├── automate_football_analytics.py
-├── automate_football_analytics_fullLeague.py
-├── download_all_tabs.py
-├── visualize_score_table.py
-├── data/
-│   ├── home_away_team_strengths_*.csv
-│   ├── league_data_*.csv
-│   ├── suggestion_*.json
-│   └── old csv/
-│       └── *.csv
-├── football-data/
-│   ├── data.zip
-│   └── all-euro-football/
-│       └── *.csv
-├── tmp/
-│   └── *.log
-├── __pycache__/
-│   └── *.pyc
-├── visuals/
-│   ├── *.png
-│   └── *.csv
-├── venv/
-├── .git/
-├── .gitignore
-└── .idea/
-```
-
-### File Descriptions
-
-- `automate_football_analytics.py` - Main analysis script for individual match predictions
-- `automate_football_analytics_fullLeague.py` - Full league analysis script for upcoming games and parlay generation
-- `algorithms.py` - Core mathematical algorithms for predictions
-- `download_all_tabs.py` - Data fetching utilities
-- `visualize_score_table.py` - Visualization tools for score tables
-- `organize_structure.sh` - Bash script to create directories and organize files according to project structure
-- `organize_structure.py` - Python script to create directories and organize files according to project structure
-- `web_output_examples.py` - Script for generating web output examples
-- `ALGORITHMS.md` - Detailed documentation of all algorithms
-- `README.md` - Main project documentation
-- `README_Downloader_Script.md` - Documentation for the downloader script
-- `requirements.txt` - Python dependencies
-
-## Algorithm Overview
-
-1. **Team Strength Calculation** - Normalizes performance vs league average
-2. **Expected Goals (xG) Estimation** - Multiplicative model with home advantage
-3. **Poisson Distribution** - Mathematical foundation for goal modeling
-4. **Score Probability Matrix** - All possible match score probabilities
-5. **Market Probability Extraction** - Converts scores to betting markets
-6. **Recent Form Analysis** - Exponential decay weighting
-7. **Form-Season Blending** - Weighted average of stats and form
-8. **Kelly Criterion Staking** - Optimal bet sizing with caps
-9. **Parlay Generation** - Value-ranked combination bets
-10. **Smart Caching** - Rate limiting with graceful degradation
-11. **Heuristic Estimation** - Secondary market predictions
-
-## New CLI options (risk and confidence)
-
-Both main CLIs now support risk and confidence controls and log suggested bet slips:
-
-- `--min-confidence FLOAT` (default 0.6): minimum probability to surface a market from the Poisson score matrix.
-- `--risk-profile {conservative|moderate|aggressive}` (default moderate): controls Kelly scaling caps for stake suggestions.
-  - conservative: risk_multiplier=0.25, f_max=0.01
-  - moderate:    risk_multiplier=0.5,  f_max=0.015
-  - aggressive:  risk_multiplier=0.9,  f_max=0.03
-
-Suggested parlays are logged to `data/bet_history.csv` with timestamp, legs, probability, odds, stake_suggestion, and parameters used.
-
-### Examples
-
+Via unified CLI:
 ```bash
-# Single match interactive flow (choose league and teams interactively)
-python3 automate_football_analytics.py --bankroll 500 --risk-profile conservative --min-confidence 0.65
-
-# Full league flow for EPL, using parsed fixtures when available
-python3 automate_football_analytics_fullLeague.py --league E0 --bankroll 500 --risk-profile moderate --min-confidence 0.65
-
-# Analyze all parsed fixtures across leagues
-python3 automate_football_analytics_fullLeague.py --use-parsed-all --bankroll 500 --risk-profile aggressive --min-confidence 0.7
+python3 cli.py --task full-league --league E0 --ml-mode predict --ml-validate
 ```
 
-> Note: Bet history logging appends to `data/bet_history.csv`. You can analyze it with pandas or a spreadsheet to review stake sizing and outcomes.
+### ML Flags Summary
+| Flag | Purpose | Default |
+|------|---------|---------|
+| `--ml-mode` | off / train / predict | off |
+| `--ml-validate` | Print CV metrics after training | (disabled) |
+| `--ml-algorithms` | Comma list (rf,xgb) | rf,xgb |
+| `--ml-decay` | Recency decay factor (0<d<=1) | 0.85 |
+| `--ml-min-samples` | Minimum rows required to run ML | 300 |
+| `--ml-save-models` | Persist trained models to disk | (disabled) |
+| `--ml-models-dir` | Directory for saved model pickles | models |
 
-## Rating model (goal-supremacy) and blending
+### Output Augmentation (Predict Mode)
+For each match suggestion:
+```
+ML Total Goals: <mean> (model RF/XGB)
+ML 1X2 probs: H=.. D=.. A=.. (model RF/XGB)
+ML BTTS probs: Yes=.. No=.. (model RF/XGB)
+Δ1X2: H=±Δ D=±Δ A=±Δ          # Difference ML - Poisson
+ΔBTTS: Yes=±Δ No=±Δ           # Difference ML - Poisson
+```
+Positive deltas indicate ML assigns higher probability than Poisson baseline.
 
-You can enable a rating-driven 1X2 model based on recent goal-supremacy and optionally blend it with Poisson-derived 1X2 probabilities.
+### Cross-Validation Metrics (when --ml-validate)
+Example log lines:
+```
+ML Cross-Validation Metrics:
+  TotalGoals_RF: {'MAE': 1.42, 'RMSE': 1.89}
+  1X2_RF: {'Accuracy': 0.53, 'LogLoss': 1.02}
+  BTTS_RF: {'Accuracy': 0.61, 'LogLoss': 0.66}
+```
+Interpretation: Lower MAE/RMSE better (Total Goals). Higher Accuracy better (1X2, BTTS). If LogLoss is None a fold had a single class (rare in small splits).
 
-CLI flags (both single-match and full-league scripts):
-- `--rating-model {none,goal_supremacy,blended}` (default `none`)
-- `--rating-last-n INT` (default `6`)
-- `--min-sample-for-rating INT` (default `30`)
-- `--rating-blend-weight FLOAT` (default `0.3`)
+### Fallback & Safety Behavior
+- Missing historical data: ML mode skipped, Poisson-only.
+- Not enough samples (`< ml_min_samples`): ML skipped, Poisson-only.
+- XGBoost absent: Runs RandomForest only; metrics still printed.
+- Feature columns missing (shots/fouls/corners): Automatically zero-imputed.
+- Date parsing failure: Recency weights revert to positional ordering.
 
-Examples:
+### Model Persistence
+If `--ml-save-models` is used, a pickle file is created under `models/`:
+```
+models/ml_models_<LEAGUE>_<TIMESTAMP>.pkl
+```
+Contains: regression & classification model objects, CV metrics, metadata.
+
+### Extending / Next Steps
+Ideas to extend ML mode later:
+- Add Brier score & ROC-AUC metrics
+- Blend Poisson & ML probabilities for calibrated hybrid outputs
+- Calibrate probabilities (Platt scaling / isotonic) on validation folds
+- Add bookmaker odds features if odds feed available
+
+### Troubleshooting
+| Issue | Cause | Resolution |
+|-------|-------|-----------|
+| "ML modules not available" | Missing dependencies | `pip install -r requirements.txt` |
+| "Insufficient samples" | Historical dataset too small | Lower `--ml-min-samples` or gather more data |
+| No Δ lines printed | Predict mode not enabled | Use `--ml-mode predict` |
+| LogLoss = None | Class imbalance in a fold | Increase samples or reduce folds |
+
+---
+
+## Example Combined Workflow
 ```bash
-# Use pure rating-based 1X2 on single match flow
-python3 automate_football_analytics.py --league E0 --rating-model goal_supremacy --rating-last-n 6
-
-# Blend rating (30%) with Poisson (70%) on full league flow
-python3 automate_football_analytics_fullLeague.py --league E0 --rating-model blended --rating-blend-weight 0.3 --rating-last-n 6
+# 1. Download fresh data
+python3 cli.py --task download --leagues E0
+# 2. Organize (optional)
+python3 cli.py --task organize --source football-data --target data
+# 3. Train ML models + validate
+python3 cli.py --task full-league --league E0 --ml-mode train --ml-validate
+# 4. Predict with ML augmentation
+python3 cli.py --task full-league --league E0 --ml-mode predict
 ```
 
-### Backtesting and diagnostics
-
-Use the analyzer to compare suggestions to known results and to evaluate strike-rate/ROI by rating bins:
-
-```bash
-# Accuracy and parlay diagnostics only
-python3 analyze_suggestions_results.py --suggestions data/full_league_suggestions_E0_20251102_095227.json --results data/sample_results_20251102.csv
-
-# Include rating-bin backtest (uses historical CSVs in data/old\ csv/)
-python3 analyze_suggestions_results.py --suggestions data/full_league_suggestions_E0_20251102_095227.json \
-  --results data/sample_results_20251102.csv \
-  --backtest-rating --rating-last-n 6 --rating-bins "-10,-6,-4,-2,-1,0,1,2,4,6,10"
-```
-
-Notes:
-- Historical files should be placed under `data/old csv/` and include columns Date, HomeTeam, AwayTeam, FTHG, FTAG (common football-data columns are auto-normalized).
-- When `--rating-model=none`, the behavior is unchanged from prior Poisson-only logic.
-
-## Disclaimer
-
-This system is designed for educational purposes and conservative betting strategies. It does not guarantee profits and should be used responsibly.
+## Tests
+ML pipeline integrity is covered by unit tests in `tests/test_ml_pipeline.py` (feature engineering, weighting, training, prediction & evaluation).

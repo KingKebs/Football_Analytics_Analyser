@@ -4,7 +4,7 @@ Visualize score probability matrix from the latest suggestion JSON.
 Usage:
   python visualize_score_table.py [--input <path>] [--output <path>]
 If --input is omitted, the script will pick the most recent data/suggestion_*.json
-Saves a heatmap PNG (default: data/score_heatmap.png)
+Saves a heatmap PNG (default: visuals/score_heatmap.png)
 """
 import argparse
 import glob
@@ -63,7 +63,7 @@ def plot_heatmap(df: pd.DataFrame, out_path: str):
 def main():
     parser = argparse.ArgumentParser(description='Visualize score probability matrix from suggestion JSON')
     parser.add_argument('--input', type=str, help='Path to suggestion JSON')
-    parser.add_argument('--output', type=str, default='data/score_heatmap.png', help='Output PNG path')
+    parser.add_argument('--output', type=str, default='visuals/score_heatmap.png', help='Output PNG path')
     args = parser.parse_args()
 
     in_path = args.input or find_latest_suggestion()
@@ -72,10 +72,11 @@ def main():
         return
 
     df = load_score_matrix(in_path)
+    # Ensure output directory exists
+    os.makedirs(os.path.dirname(args.output), exist_ok=True)
     plot_heatmap(df, args.output)
     print(f'Heatmap saved to {args.output}')
 
 
 if __name__ == '__main__':
     main()
-

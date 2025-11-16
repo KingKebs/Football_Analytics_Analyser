@@ -1,0 +1,73 @@
+{
+  "status": "success",
+  "league": "E0",
+  "timestamp": "2025-10-29T20:37:20.358899",
+  "data": {
+    "suggestions": [
+      {
+        "home": "Manchester City",
+        "away": "Liverpool",
+        "xg_home": 2.45,
+        "xg_away": 1.23,
+        "picks": [
+          {
+            "market": "1X2",
+            "selection": "Home",
+            "prob": 0.65,
+            "odds": 1.54
+          },
+          {
+            "market": "BTTS",
+            "selection": "Yes",
+            "prob": 0.72,
+            "odds": 1.39
+          }
+        ]
+      },
+      {
+        "home": "Arsenal",
+        "away": "Chelsea",
+        "xg_home": 1.89,
+        "xg_away": 1.67,
+        "picks": [
+          {
+            "market": "Over/Under 2.5",
+            "selection": "Over2.5",
+            "prob": 0.78,
+            "odds": 1.28
+          }
+        ]
+      }
+    ],
+    "favorable_parlays": [
+      {
+        "size": 2,
+        "legs": [
+          "Manchester City v Liverpool (1X2 Home)",
+          "Arsenal v Chelsea (Over2.5)"
+        ],
+        "probability": 0.51,
+        "decimal_odds": 1.97,
+        "stake_suggestion": 25.0,
+        "potential_return": 49.25
+      },
+      {
+        "size": 3,
+        "legs": [
+          "Manchester City v Liverpool (BTTS Yes)",
+          "Arsenal v Chelsea (Over2.5)",
+          "Another Match"
+        ],
+        "probability": 0.56,
+        "decimal_odds": 2.34,
+        "stake_suggestion": 20.0,
+        "potential_return": 46.8
+      }
+    ]
+  },
+  "metadata": {
+    "total_suggestions": 2,
+    "total_parlays": 2,
+    "generated_by": "Football Analytics Analyser v2.0"
+  }
+}

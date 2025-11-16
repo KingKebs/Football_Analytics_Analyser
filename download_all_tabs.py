@@ -2,7 +2,7 @@
 Download European league CSVs from football-data.co.uk into football-data/all-euro-football/
 
 - Supports multiple league codes (E0, D1, SP1, ...)
-- Supports multiple seasons (e.g., 2526, 2425, 2324)
+- Supports multiple seasons (e.g., 2526,2425,2324)
 - Caches downloads and skips re-downloading within a refresh window unless --force
 - Writes season-specific files (e.g., E0_2526.csv) and also latest alias (E0.csv)
 
@@ -245,9 +245,25 @@ def download_football_data(
     return results
 
 
+def download_fixtures() -> None:
+    fixtures_url = 'https://www.football-data.co.uk/fixtures.csv'
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    dest_dir = 'data/Results'
+    dest_path = os.path.join(dest_dir, f'fixtures_{timestamp}.csv')
+
+    print(Fore.LIGHTBLUE_EX + f"Downloading fixtures data to {dest_path}..." + Fore.RESET)
+
+    os.makedirs(dest_dir, exist_ok=True)
+    if download_url_to_file(fixtures_url, dest_path):
+        print(Fore.GREEN + f"Fixtures data saved to {dest_path}" + Fore.RESET)
+    else:
+        print(Fore.RED + "Failed to download fixtures data." + Fore.RESET)
+
+
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description='Download football-data.co.uk CSVs into all-euro-football directory')
     parser.add_argument('--download-football-data', action='store_true', help='Download football-data CSVs')
+    parser.add_argument('--download-fixtures', action='store_true', help='Download fixtures data')
     parser.add_argument('--seasons', type=str, default='AUTO', help='Comma-separated list of seasons, e.g. 2526,2425 or AUTO for current season')
     parser.add_argument('--include-previous-season', action='store_true', help='When using AUTO seasons, also include the previous season')
     parser.add_argument('--leagues', type=str, default='E0', help='Comma-separated league codes or ALL for all supported')
@@ -268,8 +284,8 @@ def main(argv: List[str] | None = None) -> int:
 
     leagues = [c.strip().upper() for c in args.leagues.split(',') if c.strip()]
 
-    if not args.download_football_data:
-        print('Nothing to do. Use --download-football-data to fetch CSVs.')
+    if not args.download_football_data and not args.download_fixtures:
+        print('Nothing to do. Use --download-football-data to fetch CSVs or --download-fixtures to fetch fixtures data.')
         return 0
 
     print(f"Out dir: {args.out}")
@@ -277,18 +293,19 @@ def main(argv: List[str] | None = None) -> int:
     print(f"Seasons: {seasons}")
     print(f"Force:   {args.force}; Refresh-hours: {args.refresh_hours}; Dry-run: {args.dry_run}")
 
-    results = download_football_data(
-        seasons=seasons,
-        league_codes=leagues,
-        out_dir=args.out,
-        force=args.force,
-        refresh_hours=args.refresh_hours,
-        dry_run=args.dry_run,
-    )
+    if args.download_football_data:
+        download_football_data(
+            seasons=seasons,
+            league_codes=leagues,
+            out_dir=args.out,
+            force=args.force,
+            refresh_hours=args.refresh_hours,
+            dry_run=args.dry_run,
+        )
 
-    # Simple summary
-    total_files = sum(len(v) for v in results.values())
-    print(f"\nDone. Leagues processed: {len(results)}; files written/kept: {total_files}")
+    if args.download_fixtures:
+        download_fixtures()
+
     return 0
 
 
