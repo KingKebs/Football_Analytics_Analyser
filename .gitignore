@@ -69,3 +69,5 @@ tmp/**
 visuals/**/*.png
 visuals/**/*.csv
 
+# Local training config (keep example only)
+config/train_config.yaml

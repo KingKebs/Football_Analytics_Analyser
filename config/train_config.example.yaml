@@ -1,0 +1,27 @@
+# Example training configuration for Section 2.5 Training Procedure
+# Copy to config/train_config.yaml and adjust.
+
+train:
+  leagues: ["E0"]            # League codes to include
+  seasons: ["2324", "2425"] # Season suffixes (e.g. 2324 corresponds to E0_2324.csv)
+  rolling_window: 6           # Rolling window length for feature engineering
+  min_samples: 200            # Minimum rows required to proceed (adjusted for example)
+  algorithms: ["rf", "xgb"]  # rf and/or xgb (xgboost optional install)
+  train_until: "2025-07-31"   # Inclusive date for training slice (YYYY-MM-DD)
+  validation_from: "2025-08-01" # Start date of validation slice
+  fast_mode: false            # If true, uses fewer estimators for faster iteration
+
+calibration:
+  enable: true
+  ece_threshold: 0.03         # Calibrate BTTS if ECE above threshold
+  bins: 10                    # Reliability diagram bins
+  method_preference: "auto"   # auto | isotonic | platt
+
+output:
+  artifacts_dir: "models"     # Base directory for artifact versioning
+  tag: "baseline_v1"          # Custom tag appended to artifact folder name
+  save_calibrated: true        # Persist calibrated wrapper if calibration applied
+
+meta:
+  description: "Initial baseline training run with RF/XGB across E0 seasons"
+  seed: 42

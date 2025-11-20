@@ -23,15 +23,20 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+# Compatibility helper for new data layout
+from data_file_utils import find_latest_analysis
+
 # Set style
 plt.style.use('seaborn-v0_8')
 sns.set_palette("husl")
 
 
 def find_latest_full_league(data_dir: str = 'data') -> Optional[str]:
-    """Find the most recent full league suggestions JSON file."""
-    paths = sorted(glob.glob(os.path.join(data_dir, 'full_league_suggestions_*.json')))
-    return paths[-1] if paths else None
+    """Find the most recent full league suggestions JSON file.
+
+    Uses compatibility helper to handle new 'data/analysis' layout while falling back to legacy locations.
+    """
+    return find_latest_analysis()
 
 
 def load_full_league_data(path: str) -> dict:

@@ -12,11 +12,20 @@ import glob
 import sys
 from datetime import datetime, timedelta
 
-def main():
+def main(argv=None):
+    """Organize project structure.
+
+    Args:
+        argv (list[str]|None): Optional list of command-line arguments. If None, uses sys.argv[1:].
+    """
+    # Normalize argv
+    if argv is None:
+        argv = sys.argv[1:]
+
     print("Organizing Football Analytics Analyser project structure...")
 
     # Dry run option
-    dry_run = '--dry-run' in sys.argv
+    dry_run = '--dry-run' in argv
     if dry_run:
         print("DRY RUN MODE - No files will be moved\n")
 

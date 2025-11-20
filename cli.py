@@ -115,6 +115,7 @@ class FootballAnalyticsCLI:
         parser.add_argument('--dry-run', action='store_true', help='Preview actions without executing')
         parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
         parser.add_argument('--output-format', choices=['json', 'csv', 'text', 'html'], default='json', help='Output format [default: json]')
+        parser.add_argument('--use-parsed-all', action='store_true', help='Use all parsed fixtures across leagues (todays_fixtures_*) for full-league task')
         return parser
 
     def run(self, args=None):
@@ -171,6 +172,8 @@ class FootballAnalyticsCLI:
                 '--ml-min-samples', str(args.ml_min_samples),
                 '--min-confidence', str(args.min_confidence),
             ]
+            if args.use_parsed_all:
+                argv.append('--use-parsed-all')
             # Pass input log if provided
             if args.input:
                 argv.extend(['--input-log', args.input])

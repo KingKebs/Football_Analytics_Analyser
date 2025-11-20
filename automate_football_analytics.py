@@ -66,6 +66,9 @@ EURO_FOOTBALL_DIR = os.path.join('football-data', 'all-euro-football')
 LEAGUE_CACHE_DIR = os.path.join(DATA_DIR, 'cache')
 LAST_TEAMS_JSON = os.path.join(DATA_DIR, 'last_teams.json')
 
+# Compatibility helper for new layout
+from data_file_utils import get_league_cache_path, get_team_strengths_path, ensure_dirs_for_writing
+
 # Caching
 CACHE_DURATION_HOURS = 6
 
@@ -167,9 +170,9 @@ def load_league_table(league_code: str) -> pd.DataFrame:
     """Load league table for selected league from all-euro-football directory, aggregating if needed.
        Caches aggregated table to data/league_data_<code>.csv
     """
-    os.makedirs(DATA_DIR, exist_ok=True)
-    cache_path = os.path.join(DATA_DIR, f"league_data_{league_code}.csv")
-    # If cache exists and is fresh enough, use it
+    # Ensure new dirs exist when writing cache
+    ensure_dirs_for_writing()
+    cache_path = get_league_cache_path(league_code)
     if os.path.exists(cache_path):
         mtime = datetime.fromtimestamp(os.path.getmtime(cache_path), tz=timezone.utc)
         age_hours = (datetime.now(timezone.utc) - mtime).total_seconds() / 3600
@@ -335,8 +338,9 @@ def main_interactive(bankroll: float = 100.0, league_code: str = None, rating_mo
         strengths_df = merge_form_into_strengths(strengths_df, history_df, last_n=6, decay=0.6, alpha=0.4)
         try:
             os.makedirs(DATA_DIR, exist_ok=True)
-            strengths_df.to_csv(os.path.join(DATA_DIR, f"home_away_team_strengths_{league_code}.csv"), index=False)
-            logging.info("Updated strengths with recent form saved to data/")
+            strengths_path = get_team_strengths_path(league_code)
+            strengths_df.to_csv(strengths_path, index=False)
+            logging.info(f"Updated strengths with recent form saved to {strengths_path}")
         except Exception:
             logging.warning("Could not save updated strengths CSV")
     else:

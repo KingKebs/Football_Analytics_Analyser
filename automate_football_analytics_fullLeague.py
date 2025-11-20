@@ -27,6 +27,7 @@ import pandas as pd
 import logging
 import glob
 import difflib
+from data_file_utils import ensure_dirs_for_writing
 
 # ML imports (lazy inside functions to avoid mandatory dependency if ML not used)
 try:
@@ -122,6 +123,29 @@ LEAGUE_MAPPINGS: Dict[str, Dict[str, str]] = {
     'T1': {'name': 'Süper Lig (Turkey)', 'country': 'Turkey', 'tier': 1},
 }
 
+# Competition name -> league code mapping (for parsed fixtures inference)
+COMPETITION_TO_LEAGUE = {
+    'Premier League': 'E0', 'Championship': 'E1', 'League One': 'E2', 'League Two': 'E3',
+    'Bundesliga': 'D1', '2. Bundesliga': 'D2',
+    'La Liga': 'SP1', 'Segunda División': 'SP2',
+    'Serie A': 'I1', 'Serie B': 'I2',
+    'Ligue 1': 'F1', 'Ligue 2': 'F2',
+    'Primeira Liga': 'P1', 'Eredivisie': 'N1',
+    'Scottish Premiership': 'SC0', 'Scottish Championship': 'SC1', 'Scottish League One': 'SC2', 'Scottish League Two': 'SC3',
+    'Belgian Pro League': 'B1', 'Super League Greece': 'G1', 'Süper Lig': 'T1'
+}
+
+# Team alias expansions reused for inference (lowercased)
+TEAM_ALIASES_INFERENCE = {
+    'man city': 'man city', 'manchester city': 'man city',
+    'man united': 'man united', 'man utd': 'man united', 'manchester united': 'man united',
+    'nottm forest': "nott'm forest", 'nottingham forest': "nott'm forest", 'nottingham': "nott'm forest",
+    'athletic bilbao': 'ath bilbao', 'ath bilbao': 'ath bilbao',
+    'psg': 'psg',
+    'inter': 'inter', 'internazionale': 'inter',
+    'juventus': 'juventus', 'napoli': 'napoli'
+}
+
 
 def get_league_info(league_code: str) -> Dict[str, str]:
     if league_code not in LEAGUE_MAPPINGS:
@@ -175,9 +199,17 @@ def load_league_table(league_code: str) -> pd.DataFrame:
 
 def load_historical_matches(data_dir: str = DATA_DIR, subfolder: str = OLD_CSV_SUBFOLDER) -> pd.DataFrame:
     folder = os.path.join(data_dir, subfolder)
-    if not os.path.isdir(folder):
-        return pd.DataFrame()
-    files = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith('.csv')]
+    files: List[str] = []
+    if os.path.isdir(folder):
+        files.extend([os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith('.csv')])
+    # Also include archived historical season CSVs after reorg (data/archive)
+    archive_dir = os.path.join(data_dir, 'archive')
+    if os.path.isdir(archive_dir):
+        for f in os.listdir(archive_dir):
+            lf = f.lower()
+            # heuristic: season historical files contain _data_ or end with dataset.csv; skip league_data_ cached tables
+            if lf.endswith('.csv') and ('_data_' in lf or 'dataset' in lf) and not lf.startswith('league_data_'):
+                files.append(os.path.join(archive_dir, f))
     if not files:
         return pd.DataFrame()
     dfs = []
@@ -470,79 +502,117 @@ def select_favorable_parlays(parlays: List[Dict], min_prob: float = 0.5, min_odd
 
 
 def analyze_parsed_fixtures_all(parsed_df: pd.DataFrame, min_confidence: float, rating_models: Dict, history_df: pd.DataFrame, rating_model_config: Dict) -> Tuple[List[Dict], List[Dict]]:
+    # Build global team index once
+    strengths_cache: Dict[str, pd.DataFrame] = {}
+    team_index: Dict[str, set] = {}
+    for code in LEAGUE_MAPPINGS.keys():
+        try:
+            ldf = load_league_table(code)
+            sdf = compute_basic_strengths(ldf)
+            strengths_cache[code] = sdf
+            team_index[code] = set(str(t).strip().lower() for t in sdf['Team'].astype(str))
+        except Exception:
+            strengths_cache[code] = pd.DataFrame()
+            team_index[code] = set()
+
+    def infer_league(home: str, away: str, competition: str, raw_league: str) -> str:
+        # 1) Use provided league field if valid
+        if raw_league and raw_league in strengths_cache:
+            return raw_league
+        # 2) Map competition name
+        if competition:
+            comp_code = COMPETITION_TO_LEAGUE.get(competition.strip(), '')
+            if comp_code in strengths_cache:
+                return comp_code
+        h_norm = TEAM_ALIASES_INFERENCE.get(home.lower(), home.lower())
+        a_norm = TEAM_ALIASES_INFERENCE.get(away.lower(), away.lower())
+        # 3) Exact presence search
+        candidates = []
+        for code, names in team_index.items():
+            score = 0
+            if h_norm in names: score += 2
+            if a_norm in names: score += 2
+            if score: candidates.append((code, score))
+        if candidates:
+            return max(candidates, key=lambda x: x[1])[0]
+        # 4) Fuzzy match fallback
+        import difflib as _df
+        best_code = ''
+        best_score = 0.0
+        for code, names in team_index.items():
+            names_list = list(names)
+            h_match = _df.get_close_matches(h_norm, names_list, n=1, cutoff=0.85)
+            a_match = _df.get_close_matches(a_norm, names_list, n=1, cutoff=0.85)
+            local_score = 0.0
+            if h_match:
+                local_score += _df.SequenceMatcher(a=h_norm, b=h_match[0]).ratio()
+            if a_match:
+                local_score += _df.SequenceMatcher(a=a_norm, b=a_match[0]).ratio()
+            if local_score > best_score:
+                best_score = local_score
+                best_code = code
+        return best_code if best_score >= 1.3 else ''  # requires at least moderate combined similarity
+
+    def canonicalize(team: str, league_code: str) -> Tuple[str, float]:
+        """Attempt to canonicalize team name within a league; returns (canonical, score)."""
+        raw = (team or '').strip()
+        if not raw or league_code not in strengths_cache or strengths_cache[league_code].empty:
+            return '', 0.0
+        sdf = strengths_cache[league_code]
+        teams_list = list(sdf['Team'].astype(str))
+        # direct exact match
+        for t in teams_list:
+            if raw.lower() == t.lower():
+                return t, 1.0
+        # alias dictionary (reuse TEAM_ALIASES + inference aliases)
+        alias_low = raw.lower()
+        if alias_low in TEAM_ALIASES:
+            target = TEAM_ALIASES[alias_low]
+            for t in teams_list:
+                if t.lower() == target.lower():
+                    return t, 0.95
+        if alias_low in TEAM_ALIASES_INFERENCE:
+            target = TEAM_ALIASES_INFERENCE[alias_low]
+            for t in teams_list:
+                if t.lower() == target.lower():
+                    return t, 0.9
+        # fuzzy match
+        import difflib as _df
+        candidates = _df.get_close_matches(raw, teams_list, n=1, cutoff=0.82)
+        if candidates:
+            score = _df.SequenceMatcher(a=raw.lower(), b=candidates[0].lower()).ratio()
+            return candidates[0], score
+        return '', 0.0
+
     suggestions: List[Dict] = []
     skipped: List[Dict] = []
-    strengths_cache: Dict[str, pd.DataFrame] = {}
     for _, row in parsed_df.iterrows():
-        home = str(row.get('HomeTeam', ''))
-        away = str(row.get('AwayTeam', ''))
-        # Try every known league until both teams exist
-        league_found = None
-        for code in LEAGUE_MAPPINGS.keys():
-            if code not in strengths_cache:
-                try:
-                    ldf = load_league_table(code)
-                    strengths_cache[code] = compute_basic_strengths(ldf)
-                except Exception:
-                    strengths_cache[code] = pd.DataFrame()
-            sdf = strengths_cache[code]
-            if sdf.empty or 'Team' not in sdf.columns:
-                continue
-            teams = set(str(t) for t in sdf['Team'].astype(str))
-            if home in teams and away in teams:
-                league_found = code
-                strengths = sdf
-                break
-        if not league_found:
-            skipped.append({'row': row.to_dict(), 'reason': 'no matching league/teams'})
+        home_raw = str(row.get('HomeTeam') or row.get('home') or '').strip()
+        away_raw = str(row.get('AwayTeam') or row.get('away') or '').strip()
+        competition = str(row.get('Competition') or row.get('competition') or '').strip()
+        raw_league = str(row.get('League') or row.get('league') or '').strip().upper()
+        if not home_raw or not away_raw:
+            skipped.append({'row': row.to_dict(), 'reason': 'missing_teams'})
             continue
-        s = build_single_match_suggestion(home, away, strengths, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
-        s['league_code'] = league_found
-        suggestions.append(s)
+        league_code = infer_league(home_raw, away_raw, competition, raw_league)
+        if not league_code or league_code not in strengths_cache or strengths_cache[league_code].empty:
+            skipped.append({'row': row.to_dict(), 'reason': 'unresolved_league'})
+            continue
+        # canonicalize teams within inferred league
+        home_can, h_score = canonicalize(home_raw, league_code)
+        away_can, a_score = canonicalize(away_raw, league_code)
+        if h_score < 0.75 or a_score < 0.75:
+            skipped.append({'row': row.to_dict(), 'reason': 'team_not_in_strengths', 'league_code': league_code, 'home_score': h_score, 'away_score': a_score})
+            continue
+        strengths_df = strengths_cache[league_code]
+        try:
+            s = build_single_match_suggestion(home_can, away_can, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+            s['league_code'] = league_code
+            s['competition'] = competition
+            suggestions.append(s)
+        except Exception as e:
+            skipped.append({'row': row.to_dict(), 'reason': 'build_error', 'error': str(e), 'league_code': league_code})
     return suggestions, skipped
-
-
-def parse_input_log(path: str) -> pd.DataFrame:
-    """Parse a plain text match log to extract pairs of teams.
-    Supports lines like:
-      Match 1: TeamA v TeamB
-      TeamA vs TeamB
-      TeamA - TeamB
-    Returns DataFrame(Date, HomeTeam, AwayTeam)
-    """
-    if not path or not os.path.isfile(path):
-        return pd.DataFrame()
-    rows = []
-    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-        for line in f:
-            raw = line.strip()
-            if not raw:
-                continue
-            # Drop timestamps or prefixes like "[13:45:24]" or "Match 1:" etc.
-            raw = re.sub(r"^\[\d{2}:\d{2}:\d{2}\]\s*", "", raw)
-            raw = re.sub(r"^(?:match\s*\d*[:\-]?\s*)", "", raw, flags=re.IGNORECASE)
-            # Try common separators
-            parts = None
-            for sep in [' v ', ' vs ', ' VS ', ' Vs ', ' - ', ' @ ']:
-                if sep in raw:
-                    parts = [p.strip() for p in raw.split(sep) if p.strip()]
-                    break
-            if parts is None:
-                m = re.match(r"^(.*?)\s+v(?:s)?\s+(.*)$", raw, flags=re.IGNORECASE)
-                if m:
-                    parts = [m.group(1).strip(), m.group(2).strip()]
-            if not parts or len(parts) != 2:
-                continue
-            home, away = parts
-            # Filter out obvious non-team lines
-            if not home or not away or len(home) < 2 or len(away) < 2:
-                continue
-            rows.append({'HomeTeam': home, 'AwayTeam': away})
-    if not rows:
-        return pd.DataFrame()
-    df = pd.DataFrame(rows)
-    df['Date'] = pd.Timestamp.now(tz='UTC')
-    return df[['Date','HomeTeam','AwayTeam']]
 
 
 def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parsed_all: bool = False, min_confidence: float = 0.6, risk_profile: str = 'moderate', rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, rating_range_filter=None,
@@ -641,7 +711,15 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
     elif use_parsed_all and not parsed_fixtures.empty:
         suggestions, skipped = analyze_parsed_fixtures_all(parsed_fixtures, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
         if skipped:
-            logging.info(f"Skipped {len(skipped)} parsed fixtures due to team/league mismatch")
+            logging.info(f"Skipped {len(skipped)} parsed fixtures (team/league inference failures)")
+            # breakdown by reason
+            reason_counts = {}
+            for sk in skipped:
+                r = sk.get('reason','unknown')
+                reason_counts[r] = reason_counts.get(r, 0) + 1
+            logging.info("Skip reasons: " + ', '.join(f"{k}={v}" for k,v in reason_counts.items()))
+        logging.info(f"Parsed fixture inference: success={len(suggestions)} skipped={len(skipped)}")
+        fixtures_df = None
     else:
         fixtures_df = None
         if not parsed_fixtures.empty:
@@ -720,8 +798,11 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
 
     # Save results
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-    os.makedirs(DATA_DIR, exist_ok=True)
-    out_path = os.path.join(DATA_DIR, f'full_league_suggestions_{league_code}_{timestamp}.json')
+    # Ensure new dirs exist and prefer data/analysis/ for suggestions
+    ensure_dirs_for_writing()
+    out_dir = os.path.join('data', 'analysis')
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f'full_league_suggestions_{league_code}_{timestamp}.json')
     with open(out_path, 'w') as f:
         json.dump({'suggestions': suggestions, 'favorable_parlays': favorable_parlays}, f, default=lambda o: o.tolist() if isinstance(o, np.ndarray) else str(o))
     logging.info(f"Saved results to: {out_path}")
@@ -774,7 +855,7 @@ if __name__ == '__main__':
     parser.add_argument('--ml-min-samples', type=int, default=300, help='Minimum samples required to run ML training')
     parser.add_argument('--ml-save-models', action='store_true', help='Persist trained ML models to disk')
     parser.add_argument('--ml-models-dir', type=str, default='models', help='Directory to save ML model pickles')
-    parser.add_argument('--input-log', type=str, help='Path to match log to restrict fixtures (lines like "TeamA v TeamB")')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose (DEBUG) logging')
     args = parser.parse_args()
     # League alias handling
     leagues_arg = args.leagues
@@ -804,6 +885,8 @@ if __name__ == '__main__':
         ml_models_dir=args.ml_models_dir,
         input_log=args.input_log or args.league if False else args.input_log  # pass through
     )
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
 
 # Provide a callable main for external CLI compatibility
 
@@ -830,6 +913,7 @@ def main(argv=None):
     parser.add_argument('--ml-save-models', action='store_true')
     parser.add_argument('--ml-models-dir', type=str, default='models')
     parser.add_argument('--input-log', type=str)
+    parser.add_argument('--verbose', action='store_true')
     parsed = parser.parse_args(argv)
     leagues_arg = parsed.leagues or parsed.league or 'E0'
     if parsed.league and parsed.league not in leagues_arg.split(','):
@@ -856,3 +940,5 @@ def main(argv=None):
         ml_models_dir=parsed.ml_models_dir,
         input_log=parsed.input_log
     )
+    if parsed.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
