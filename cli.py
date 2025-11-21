@@ -123,7 +123,7 @@ class FootballAnalyticsCLI:
         parser.add_argument('--dry-run', action='store_true', help='Preview actions without executing')
         parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
         parser.add_argument('--output-format', choices=['json', 'csv', 'text', 'html'], default='json', help='Output format [default: json]')
-        parser.add_argument('--use-parsed-all', action='store_true', help='Use all parsed fixtures across leagues (todays_fixtures_*) for full-league task')
+        # NOTE: --use-parsed-all already defined above for corners/full-league context; duplicate removed
         return parser
 
     def run(self, args=None):
