@@ -18,8 +18,13 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Tuple
 import json
+
+# Add src/ directory to Python path for imports
+SRC_DIR = Path(__file__).parent / 'src'
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 # Setup logging
 LOG_DIR = Path('logs')
@@ -41,10 +46,96 @@ logger = logging.getLogger(__name__)
 class FootballAnalyticsCLI:
     """Main CLI dispatcher for football analytics tasks."""
 
+    # Required Python files for each task (in src/ directory)
+    REQUIRED_MODULES = {
+        'full-league': [
+            'automate_football_analytics_fullLeague.py',
+            'algorithms.py',
+            'ml_training.py',
+            'ml_evaluation.py',
+        ],
+        'single-match': [
+            'automate_football_analytics.py',
+            'algorithms.py',
+        ],
+        'download': [
+            'download_all_tabs.py',
+        ],
+        'organize': [
+            'organize_structure.py',
+        ],
+        'validate': [
+            'check_downloaded_data.py',
+        ],
+        'corners': [
+            'corners_analysis.py',
+            'automate_corner_predictions.py',
+        ],
+        'analyze-corners': [
+            'corners_analysis.py',
+        ],
+        'view': [
+            'view_suggestions.py',
+        ],
+        'backtest': [
+            'analyze_suggestions_results.py',
+        ],
+        'help': [],
+    }
+
     def __init__(self):
         self.parser = self._build_parser()
         self.data_dir = Path('data')
         self.data_dir.mkdir(exist_ok=True)
+        self.src_dir = Path('src')
+
+    def _check_required_files(self, task: str) -> Tuple[bool, List[str]]:
+        """
+        Check if all required .py files exist in src/ for the given task.
+
+        Args:
+            task: The CLI task being executed
+
+        Returns:
+            Tuple: (all_found: bool, missing_files: List[str])
+        """
+        required_files = self.REQUIRED_MODULES.get(task, [])
+        missing = []
+
+        for filename in required_files:
+            filepath = self.src_dir / filename
+            if not filepath.exists():
+                missing.append(filename)
+                logger.warning(f"Missing: {filepath}")
+
+        all_found = len(missing) == 0
+        return all_found, missing
+
+    def _validate_task_files(self, task: str) -> bool:
+        """
+        Validate that all required files for a task exist.
+        Exit with error if files are missing.
+
+        Args:
+            task: The CLI task being executed
+
+        Returns:
+            bool: True if all files found, False otherwise
+        """
+        all_found, missing = self._check_required_files(task)
+
+        if not all_found:
+            logger.error(f"❌ MISSING REQUIRED FILES FOR TASK: {task}")
+            logger.error(f"Expected to find {len(missing)} file(s) in src/:")
+            for f in missing:
+                logger.error(f"  ✗ src/{f}")
+            logger.error(f"\nPlease ensure all required files are in src/ directory.")
+            return False
+
+        if self.REQUIRED_MODULES.get(task):
+            logger.debug(f"✓ All required files found for task: {task}")
+
+        return True
 
     def _build_parser(self) -> argparse.ArgumentParser:
         """Build the main argument parser."""
@@ -134,6 +225,12 @@ class FootballAnalyticsCLI:
         # Use the leagues list if provided, otherwise fall back to the single league default
         leagues_to_run = args.leagues or args.league
         logger.info(f"Task: {args.task} | Leagues: {leagues_to_run}")
+
+        # Validate that required files exist for this task (unless it's 'help')
+        if args.task != 'help':
+            if not self._validate_task_files(args.task):
+                logger.error(f"Cannot proceed with task '{args.task}' - missing required files")
+                return 1
 
         try:
             if args.task == 'full-league':
