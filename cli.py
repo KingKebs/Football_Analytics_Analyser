@@ -83,6 +83,14 @@ class FootballAnalyticsCLI:
         parser.add_argument('--force', action='store_true', help='Force re-run even if results exist')
         parser.add_argument('--auto', action='store_true', help='Run without interactive prompts')
         parser.add_argument('--mode', choices=['fast','full'], default='fast', help='Corner predictions mode (fast/full) [default: fast]')
+        # Extended corner analysis flags (forwarded to corners_analysis.py)
+        parser.add_argument('--home-team', help='Home team for corner match-level prediction')
+        parser.add_argument('--away-team', help='Away team for corner match-level prediction')
+        parser.add_argument('--top-n', type=int, default=0, help='Show top N teams by average corners (0=skip)')
+        parser.add_argument('--use-parsed-all', action='store_true', help='Use parsed fixtures (todays_fixtures_*) to generate corner predictions across leagues')
+        parser.add_argument('--fixtures-date', help='Date (YYYYMMDD) for parsed fixtures file')
+        parser.add_argument('--min-team-matches', type=int, default=5, help='Minimum historical matches per team for corner prediction')
+        parser.add_argument('--save-enriched', action='store_true', help='Save enriched engineered corner feature CSVs')
 
         # Data source options
         parser.add_argument('--file', help='Input file path or filename')
@@ -344,36 +352,37 @@ class FootballAnalyticsCLI:
                 return subprocess.run(cmd, capture_output=False, text=True).returncode
             return 0
 
-        # 2) If no --input: keep previous behavior
-        if not args.file:
-            # If no specific file, use league selection
-            if hasattr(args, 'league') and args.league:
-                league_codes = args.league
-            else:
-                league_codes = 'ALL'
-            # Run corners analysis with league selection
-            import subprocess
-            cmd = [sys.executable, 'corners_analysis.py', '--league', league_codes]
-            result = subprocess.run(cmd, capture_output=False, text=True)
-            return result.returncode
+        # 2) Extended corners_analysis.py path (supports new flags)
+        import subprocess
+        corner_cmd = [sys.executable, 'corners_analysis.py']
+        # league selection: if args.leagues then pass combined, else single league
+        if args.leagues:
+            corner_cmd.extend(['--league', args.leagues])
         else:
-            # Original file-specific behavior using CornersAnalyzer
-            try:
-                from corners_analysis import CornersAnalyzer
-                csv_path = Path(args.file)
-                if not csv_path.exists():
-                    csv_path = Path('football-data') / args.file
-                    if not csv_path.exists():
-                        logger.error(f"File not found: {args.file}")
-                        return 1
-                if not args.dry_run:
-                    analyzer = CornersAnalyzer(str(csv_path))
-                    analyzer.run_full_analysis()
-                logger.info("✓ Corners analysis complete")
-                return 0
-            except ImportError as e:
-                logger.error(f"Could not import corners analyzer: {e}")
-                return 1
+            corner_cmd.extend(['--league', args.league])
+        if args.file:
+            corner_cmd.extend(['--file', args.file])
+        if args.home_team:
+            corner_cmd.extend(['--home-team', args.home_team])
+        if args.away_team:
+            corner_cmd.extend(['--away-team', args.away_team])
+        if args.top_n and args.top_n > 0:
+            corner_cmd.extend(['--top-n', str(args.top_n)])
+        if args.train_model:
+            corner_cmd.append('--train-model')
+        if args.save_enriched:
+            corner_cmd.append('--save-enriched')
+        if args.use_parsed_all:
+            corner_cmd.append('--use-parsed-all')
+            if args.fixtures_date:
+                corner_cmd.extend(['--fixtures-date', args.fixtures_date])
+            corner_cmd.extend(['--min-team-matches', str(args.min_team_matches)])
+        if args.verbose:
+            corner_cmd.append('--json-summary')  # show summary when verbose for insight
+        logger.info(f"Running corners_analysis.py: {' '.join(corner_cmd)}")
+        if not args.dry_run:
+            return subprocess.run(corner_cmd, capture_output=False, text=True).returncode
+        return 0
 
     def task_analyze_corners(self, args):
         """Run corner analysis on all available data."""

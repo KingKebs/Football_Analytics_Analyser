@@ -582,3 +582,249 @@ class CornersAnalyzer:
             print(f"  RF R² mean±std:      {metrics.get('wcv_ratio_rf_r2_mean','N/A')} ± {metrics.get('wcv_ratio_rf_r2_std','N/A')}")
             print(f"  RF MAE mean±std:     {metrics.get('wcv_ratio_rf_mae_mean','N/A')} ± {metrics.get('wcv_ratio_rf_mae_std','N/A')}")
         # ...existing trailing prints...
+        return metrics
+
+    # --- Added: Match-level prediction using team stats ---
+    def predict_match_corners(self, home_team: str, away_team: str):
+        """Predict expected corners (home, away, total, 1H/2H split) for a matchup using team stats.
+        Method:
+          - Expected home corners = avg(home home-corners for) + avg(away conceded corners against) / 2
+          - Expected away corners = avg(away away-corners for) + avg(home conceded corners against) / 2
+          - Total = sum; 1H split uses median Est_1H_Corner_Ratio or baseline.
+        Returns dict with predictions.
+        """
+        if not self.team_stats:
+            raise ValueError("Team stats not computed; run calculate_team_stats() first.")
+        home_stats, away_stats = self.team_stats
+        if home_team not in home_stats.index:
+            raise ValueError(f"Home team '{home_team}' not found in stats")
+        if away_team not in away_stats.index:
+            raise ValueError(f"Away team '{away_team}' not found in stats")
+        # Extract stats
+        h_row = home_stats.loc[home_team]
+        a_row = away_stats.loc[away_team]
+        # Conceded approximations (home: AC mean; away: HC mean in away_stats)
+        home_for = float(h_row['Avg_Corners_For']); home_conc_by_away = float(a_row['Avg_Corners_Against'])
+        away_for = float(a_row['Avg_Corners_For']); away_conc_by_home = float(h_row['Avg_Corners_Against'])
+        exp_home = (home_for + away_conc_by_home) / 2.0
+        exp_away = (away_for + home_conc_by_away) / 2.0
+        total = exp_home + exp_away
+        ratio_series = self.enriched_df['Est_1H_Corner_Ratio'] if 'Est_1H_Corner_Ratio' in self.enriched_df.columns else pd.Series([0.40])
+        ratio = float(ratio_series.median()) if not ratio_series.empty else 0.40
+        one_h = total * ratio
+        two_h = total - one_h
+        return {
+            'home_team': home_team,
+            'away_team': away_team,
+            'expected_home_corners': round(exp_home, 2),
+            'expected_away_corners': round(exp_away, 2),
+            'expected_total_corners': round(total, 2),
+            'est_1h_ratio': round(ratio, 3),
+            'expected_1h_corners': round(one_h, 2),
+            'expected_2h_corners': round(two_h, 2)
+        }
+
+# --- Added: Utility functions for multi-league processing & CLI ---
+
+def find_league_csv(league_code: str) -> str:
+    paths = [
+        os.path.join('football-data', 'all-euro-football', f'{league_code}.csv'),
+        os.path.join('football-data', f'{league_code}.csv'),
+        f'{league_code}.csv'
+    ]
+    for p in paths:
+        if os.path.isfile(p):
+            return p
+    return ''
+
+
+def process_league(league_code: str, args) -> dict:
+    csv_path = find_league_csv(league_code) or args.file
+    if not csv_path or not os.path.isfile(csv_path):
+        print(f"Skipping {league_code}: CSV not found")
+        return {'league': league_code, 'status': 'missing'}
+    analyzer = CornersAnalyzer(csv_path, league_code=league_code)
+    if analyzer.load_data() is None:
+        return {'league': league_code, 'status': 'load_failed'}
+    if not analyzer.validate_corners_data():
+        return {'league': league_code, 'status': 'invalid_corners'}
+    analyzer.clean_features()
+    analyzer.engineer_features()
+    analyzer.estimate_half_split()
+    analyzer.calculate_correlations()
+    analyzer.calculate_team_stats()
+    metrics = None
+    if args.train_model:
+        metrics = analyzer.train_models()
+    # Top team views
+    if args.top_n > 0:
+        analyzer.display_top_teams(top_n=args.top_n, home_only=args.home_only, away_only=args.away_only)
+    match_pred = None
+    if args.home_team and args.away_team:
+        try:
+            match_pred = analyzer.predict_match_corners(args.home_team, args.away_team)
+            print(f"\nMATCH PREDICTION: {args.home_team} vs {args.away_team}")
+            print(json.dumps(match_pred, indent=2))
+        except Exception as e:
+            print(f"Match prediction failed: {e}")
+    # Save enriched features if requested
+    if args.save_enriched:
+        out_dir = args.output_dir or 'data/corners'
+        os.makedirs(out_dir, exist_ok=True)
+        enriched_path = os.path.join(out_dir, f'enriched_{league_code}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv')
+        analyzer.enriched_df.to_csv(enriched_path, index=False)
+        print(f"Enriched feature set saved: {enriched_path}")
+    return {
+        'league': league_code,
+        'rows': len(analyzer.df) if analyzer.df is not None else 0,
+        'match_prediction': match_pred,
+        'model_metrics': metrics,
+    }
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description='Corner Analysis CLI')
+    p.add_argument('--league', help='League code(s) comma-separated or ALL', default='ALL')
+    p.add_argument('--file', help='Override CSV path (single league)')
+    p.add_argument('--home-team', help='Home team for match-level prediction')
+    p.add_argument('--away-team', help='Away team for match-level prediction')
+    p.add_argument('--top-n', type=int, default=0, help='Display top N teams by corners (0=skip)')
+    p.add_argument('--home-only', action='store_true', help='Show only home team stats')
+    p.add_argument('--away-only', action='store_true', help='Show only away team stats')
+    p.add_argument('--train-model', action='store_true', help='Train regression models for corners')
+    p.add_argument('--save-enriched', action='store_true', help='Save enriched engineered feature CSV')
+    p.add_argument('--output-dir', help='Directory for outputs (features, metrics)', default='data/corners')
+    p.add_argument('--json-summary', action='store_true', help='Print JSON summary at end')
+    p.add_argument('--use-parsed-all', action='store_true', help='Generate corner predictions for all parsed fixtures (todays_fixtures_<date>)')
+    p.add_argument('--fixtures-date', help='Date (YYYYMMDD) of parsed fixtures file; default today', default=None)
+    p.add_argument('--min-team-matches', type=int, default=5, help='Minimum matches for a team to allow prediction (below -> skip)')
+    p.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    return p.parse_args()
+
+def _load_parsed_fixtures(date_str: str = None, data_dir: str = 'data') -> pd.DataFrame:
+    if date_str is None:
+        date_str = datetime.now().strftime('%Y%m%d')
+    csv_path = os.path.join(data_dir, f'todays_fixtures_{date_str}.csv')
+    json_path = os.path.join(data_dir, f'todays_fixtures_{date_str}.json')
+    path = None
+    if os.path.exists(csv_path):
+        path = csv_path
+    elif os.path.exists(json_path):
+        path = json_path
+    else:
+        # fallback newest
+        candidates = sorted([p for p in Path(data_dir).glob('todays_fixtures_*.json')] + [p for p in Path(data_dir).glob('todays_fixtures_*.csv')], key=lambda p: p.stat().st_mtime, reverse=True)
+        if candidates:
+            path = str(candidates[0])
+    if not path:
+        return pd.DataFrame()
+    try:
+        if path.endswith('.csv'):
+            df = pd.read_csv(path)
+        else:
+            df = pd.read_json(path)
+    except Exception:
+        return pd.DataFrame()
+    # Normalize columns to expected names
+    cols = {c.lower(): c for c in df.columns}
+    ren = {}
+    if 'home' in cols: ren[cols['home']] = 'HomeTeam'
+    if 'away' in cols: ren[cols['away']] = 'AwayTeam'
+    if 'league' in cols: ren[cols['league']] = 'League'
+    if 'competition' in cols and 'League' not in ren: ren[cols['competition']] = 'Competition'
+    df = df.rename(columns=ren)
+    for col in ['HomeTeam','AwayTeam','League','Competition']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+    return df
+
+def main():
+    args = parse_args()
+    np.random.seed(args.seed)
+    if args.home_only and args.away_only:
+        print("Cannot set both --home-only and --away-only; choose one.")
+        return 1
+    if args.league.upper() == 'ALL':
+        leagues = SUPPORTED_LEAGUES
+    else:
+        leagues = [l.strip().upper() for l in args.league.split(',') if l.strip()]
+    summaries = []
+    analyzers = {}
+    for lg in leagues:
+        summary = process_league(lg, args)
+        summaries.append(summary)
+        # Retain analyzer for fixture predictions if enabled
+        # We refit lightweight analyzer to get team_stats reference
+        if args.use_parsed_all and summary.get('status') not in ('missing','load_failed','invalid_corners'):
+            csv_path = find_league_csv(lg) or args.file
+            if csv_path and os.path.isfile(csv_path):
+                analyzer = CornersAnalyzer(csv_path, league_code=lg)
+                if analyzer.load_data() is not None and analyzer.validate_corners_data():
+                    analyzer.clean_features(); analyzer.engineer_features(); analyzer.estimate_half_split(); analyzer.calculate_team_stats()
+                    analyzers[lg] = analyzer
+    if args.json_summary:
+        print("\n=== JSON SUMMARY ===")
+        print(json.dumps(summaries, indent=2))
+    # Parsed fixture corner predictions
+    if args.use_parsed_all:
+        date_str = args.fixtures_date or datetime.now().strftime('%Y%m%d')
+        fixtures_df = _load_parsed_fixtures(date_str)
+        if fixtures_df.empty:
+            print(f"No parsed fixtures found for date {date_str}")
+        else:
+            print(f"\nParsed fixtures loaded ({len(fixtures_df)}) for date {date_str}")
+            predictions = []
+            skips = []
+            for _, row in fixtures_df.iterrows():
+                home = row.get('HomeTeam') or row.get('home')
+                away = row.get('AwayTeam') or row.get('away')
+                league = str(row.get('League') or '').upper()
+                if not home or not away:
+                    skips.append({'home': home, 'away': away, 'reason': 'missing_team'})
+                    continue
+                if league and league not in analyzers:
+                    # Skip leagues not processed
+                    skips.append({'home': home, 'away': away, 'league': league, 'reason': 'league_not_processed'})
+                    continue
+                # If league absent attempt heuristic: choose league with both teams present
+                analyzer = analyzers.get(league)
+                if not analyzer:
+                    # try find league by team presence
+                    for lg, an in analyzers.items():
+                        hs, as_ = an.team_stats
+                        if home in hs.index and away in as_.index:
+                            analyzer = an; league = lg; break
+                if not analyzer:
+                    skips.append({'home': home, 'away': away, 'league': league, 'reason': 'no_inference'})
+                    continue
+                # Team occurrence threshold
+                hs, as_ = analyzer.team_stats
+                h_matches = int(hs.loc[home]['Matches']) if home in hs.index else 0
+                a_matches = int(as_.loc[away]['Matches']) if away in as_.index else 0
+                if h_matches < args.min_team_matches or a_matches < args.min_team_matches:
+                    skips.append({'home': home, 'away': away, 'league': league, 'reason': 'insufficient_history', 'home_matches': h_matches, 'away_matches': a_matches})
+                    continue
+                try:
+                    pred = analyzer.predict_match_corners(home, away)
+                    pred['league_code'] = league
+                    pred['source_file'] = row.get('file', f'todays_fixtures_{date_str}')
+                    predictions.append(pred)
+                except Exception as e:
+                    skips.append({'home': home, 'away': away, 'league': league, 'reason': 'prediction_error', 'error': str(e)})
+            # Save predictions
+            out_dir = args.output_dir or 'data/corners'
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, f'parsed_corners_predictions_{date_str}.json')
+            with open(out_path, 'w') as f:
+                json.dump({'date': date_str, 'predictions': predictions, 'skipped': skips}, f, indent=2)
+            print(f"\nParsed fixture corner predictions saved: {out_path}")
+            print(f"Predictions: {len(predictions)} | Skipped: {len(skips)}")
+            if skips:
+                reason_counts = {}
+                for s in skips:
+                    r = s.get('reason','unknown'); reason_counts[r] = reason_counts.get(r,0)+1
+                print("Skip reasons: " + ', '.join(f"{k}={v}" for k,v in reason_counts.items()))
+    return 0
+
+if __name__ == '__main__':
+    main()
