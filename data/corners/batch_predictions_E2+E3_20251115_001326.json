@@ -1,0 +1,1006 @@
+{
+  "leagues": [
+    "E2",
+    "E3"
+  ],
+  "generated_at": "2025-11-15T00:13:26.601636",
+  "totals": {
+    "E2": 5,
+    "E3": 8,
+    "all": 13
+  },
+  "predictions_by_league": {
+    "E2": [
+      {
+        "league": "E2",
+        "home_team": "Burton",
+        "away_team": "Blackpool",
+        "input_home": "Burton",
+        "input_away": "Blackpool",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 4.45,
+        "pred_away_corners_mean": 4.58,
+        "pred_total_corners_mean": 9.04,
+        "pred_total_corners_range": [
+          6.57,
+          11.5
+        ],
+        "pred_1h_corners_mean": 3.55,
+        "pred_2h_corners_mean": 5.49,
+        "half_ratio_used": 0.3925,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.727,
+            "p_under": 0.273,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.578,
+            "p_under": 0.422,
+            "recommendation": null
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.417,
+            "p_under": 0.583,
+            "recommendation": null
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.269,
+            "p_under": 0.731,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.154,
+            "p_under": 0.846,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.077,
+            "p_under": 0.923,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.499,
+            "p_under": 0.501,
+            "recommendation": null
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.249,
+            "p_under": 0.751,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.088,
+            "p_under": 0.912,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E2",
+        "home_team": "Leyton Orient",
+        "away_team": "Exeter",
+        "input_home": "Leyton Orient",
+        "input_away": "Exeter",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 5.92,
+        "pred_away_corners_mean": 4.54,
+        "pred_total_corners_mean": 10.46,
+        "pred_total_corners_range": [
+          7.64,
+          13.28
+        ],
+        "pred_1h_corners_mean": 4.11,
+        "pred_2h_corners_mean": 6.35,
+        "half_ratio_used": 0.3925,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.849,
+            "p_under": 0.151,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.751,
+            "p_under": 0.249,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.627,
+            "p_under": 0.373,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.487,
+            "p_under": 0.513,
+            "recommendation": null
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.35,
+            "p_under": 0.65,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.229,
+            "p_under": 0.771,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.629,
+            "p_under": 0.371,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.396,
+            "p_under": 0.604,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.197,
+            "p_under": 0.803,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E2",
+        "home_team": "Lincoln",
+        "away_team": "Doncaster",
+        "input_home": "Lincoln",
+        "input_away": "Doncaster",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 5.08,
+        "pred_away_corners_mean": 5.43,
+        "pred_total_corners_mean": 10.51,
+        "pred_total_corners_range": [
+          8.1,
+          12.92
+        ],
+        "pred_1h_corners_mean": 4.12,
+        "pred_2h_corners_mean": 6.39,
+        "half_ratio_used": 0.3925,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.891,
+            "p_under": 0.109,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.792,
+            "p_under": 0.208,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.655,
+            "p_under": 0.345,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.493,
+            "p_under": 0.507,
+            "recommendation": null
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.333,
+            "p_under": 0.667,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.198,
+            "p_under": 0.802,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.655,
+            "p_under": 0.345,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.384,
+            "p_under": 0.616,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.162,
+            "p_under": 0.838,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E2",
+        "home_team": "Luton",
+        "away_team": "Rotherham",
+        "input_home": "Luton",
+        "input_away": "Rotherham",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 6.26,
+        "pred_away_corners_mean": 3.86,
+        "pred_total_corners_mean": 10.12,
+        "pred_total_corners_range": [
+          6.92,
+          13.33
+        ],
+        "pred_1h_corners_mean": 3.97,
+        "pred_2h_corners_mean": 6.15,
+        "half_ratio_used": 0.3925,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.789,
+            "p_under": 0.211,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.688,
+            "p_under": 0.312,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.571,
+            "p_under": 0.429,
+            "recommendation": null
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.447,
+            "p_under": 0.553,
+            "recommendation": null
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.328,
+            "p_under": 0.672,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.225,
+            "p_under": 0.775,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.587,
+            "p_under": 0.413,
+            "recommendation": null
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.382,
+            "p_under": 0.618,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.206,
+            "p_under": 0.794,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E2",
+        "home_team": "Port Vale",
+        "away_team": "Wycombe",
+        "input_home": "Port Vale",
+        "input_away": "Wycombe",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 5.4,
+        "pred_away_corners_mean": 4.39,
+        "pred_total_corners_mean": 9.78,
+        "pred_total_corners_range": [
+          7.4,
+          12.17
+        ],
+        "pred_1h_corners_mean": 3.84,
+        "pred_2h_corners_mean": 5.94,
+        "half_ratio_used": 0.3925,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.826,
+            "p_under": 0.174,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.698,
+            "p_under": 0.302,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.539,
+            "p_under": 0.461,
+            "recommendation": null
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.374,
+            "p_under": 0.626,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.23,
+            "p_under": 0.77,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.123,
+            "p_under": 0.877,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.58,
+            "p_under": 0.42,
+            "recommendation": null
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.31,
+            "p_under": 0.69,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.116,
+            "p_under": 0.884,
+            "recommendation": "UNDER"
+          }
+        ]
+      }
+    ],
+    "E3": [
+      {
+        "league": "E3",
+        "home_team": "Bromley",
+        "away_team": "Barrow",
+        "input_home": "Bromley",
+        "input_away": "Barrow",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 6.04,
+        "pred_away_corners_mean": 4.62,
+        "pred_total_corners_mean": 10.66,
+        "pred_total_corners_range": [
+          8.08,
+          13.24
+        ],
+        "pred_1h_corners_mean": 4.2,
+        "pred_2h_corners_mean": 6.45,
+        "half_ratio_used": 0.3943,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.886,
+            "p_under": 0.114,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.793,
+            "p_under": 0.207,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.666,
+            "p_under": 0.334,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.516,
+            "p_under": 0.484,
+            "recommendation": null
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.364,
+            "p_under": 0.636,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.231,
+            "p_under": 0.769,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.663,
+            "p_under": 0.337,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.411,
+            "p_under": 0.589,
+            "recommendation": null
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.192,
+            "p_under": 0.808,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E3",
+        "home_team": "Fleetwood Town",
+        "away_team": "Swindon",
+        "input_home": "Fleetwood",
+        "input_away": "Swindon",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 4.97,
+        "pred_away_corners_mean": 4.54,
+        "pred_total_corners_mean": 9.52,
+        "pred_total_corners_range": [
+          6.62,
+          12.41
+        ],
+        "pred_1h_corners_mean": 3.75,
+        "pred_2h_corners_mean": 5.76,
+        "half_ratio_used": 0.3943,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.751,
+            "p_under": 0.249,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.631,
+            "p_under": 0.369,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.495,
+            "p_under": 0.505,
+            "recommendation": null
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.36,
+            "p_under": 0.64,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.241,
+            "p_under": 0.759,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.147,
+            "p_under": 0.853,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.546,
+            "p_under": 0.454,
+            "recommendation": null
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.323,
+            "p_under": 0.677,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.15,
+            "p_under": 0.85,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E3",
+        "home_team": "Grimsby",
+        "away_team": "Chesterfield",
+        "input_home": "Grimsby",
+        "input_away": "Chesterfield",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 5.33,
+        "pred_away_corners_mean": 4.56,
+        "pred_total_corners_mean": 9.88,
+        "pred_total_corners_range": [
+          7.25,
+          12.52
+        ],
+        "pred_1h_corners_mean": 3.9,
+        "pred_2h_corners_mean": 5.99,
+        "half_ratio_used": 0.3943,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.812,
+            "p_under": 0.188,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.694,
+            "p_under": 0.306,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.551,
+            "p_under": 0.449,
+            "recommendation": null
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.4,
+            "p_under": 0.6,
+            "recommendation": null
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.264,
+            "p_under": 0.736,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.156,
+            "p_under": 0.844,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.587,
+            "p_under": 0.413,
+            "recommendation": null
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.34,
+            "p_under": 0.66,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.148,
+            "p_under": 0.852,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E3",
+        "home_team": "Notts County",
+        "away_team": "Harrogate",
+        "input_home": "Notts Co",
+        "input_away": "Harrogate",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 6.3,
+        "pred_away_corners_mean": 4.42,
+        "pred_total_corners_mean": 10.72,
+        "pred_total_corners_range": [
+          8.12,
+          13.31
+        ],
+        "pred_1h_corners_mean": 4.23,
+        "pred_2h_corners_mean": 6.49,
+        "half_ratio_used": 0.3943,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.889,
+            "p_under": 0.111,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.798,
+            "p_under": 0.202,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.674,
+            "p_under": 0.326,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.526,
+            "p_under": 0.474,
+            "recommendation": null
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.375,
+            "p_under": 0.625,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.24,
+            "p_under": 0.76,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.668,
+            "p_under": 0.332,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.418,
+            "p_under": 0.582,
+            "recommendation": null
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.198,
+            "p_under": 0.802,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E3",
+        "home_team": "Oldham",
+        "away_team": "Crewe",
+        "input_home": "Oldham",
+        "input_away": "Crewe",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 5.65,
+        "pred_away_corners_mean": 4.69,
+        "pred_total_corners_mean": 10.34,
+        "pred_total_corners_range": [
+          8.22,
+          12.46
+        ],
+        "pred_1h_corners_mean": 4.08,
+        "pred_2h_corners_mean": 6.27,
+        "half_ratio_used": 0.3943,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.906,
+            "p_under": 0.094,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.801,
+            "p_under": 0.199,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.646,
+            "p_under": 0.354,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.461,
+            "p_under": 0.539,
+            "recommendation": null
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.285,
+            "p_under": 0.715,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.149,
+            "p_under": 0.851,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.661,
+            "p_under": 0.339,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.355,
+            "p_under": 0.645,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.124,
+            "p_under": 0.876,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E3",
+        "home_team": "Tranmere",
+        "away_team": "Cheltenham",
+        "input_home": "Tranmere",
+        "input_away": "Cheltenham",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 5.7,
+        "pred_away_corners_mean": 4.0,
+        "pred_total_corners_mean": 9.7,
+        "pred_total_corners_range": [
+          7.16,
+          12.24
+        ],
+        "pred_1h_corners_mean": 3.83,
+        "pred_2h_corners_mean": 5.88,
+        "half_ratio_used": 0.3943,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.802,
+            "p_under": 0.198,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.675,
+            "p_under": 0.325,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.524,
+            "p_under": 0.476,
+            "recommendation": null
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.37,
+            "p_under": 0.63,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.234,
+            "p_under": 0.766,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.131,
+            "p_under": 0.869,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.572,
+            "p_under": 0.428,
+            "recommendation": null
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.317,
+            "p_under": 0.683,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.129,
+            "p_under": 0.871,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E3",
+        "home_team": "Walsall",
+        "away_team": "Colchester",
+        "input_home": "Walsall",
+        "input_away": "Colchester",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 5.77,
+        "pred_away_corners_mean": 4.03,
+        "pred_total_corners_mean": 9.8,
+        "pred_total_corners_range": [
+          7.02,
+          12.58
+        ],
+        "pred_1h_corners_mean": 3.86,
+        "pred_2h_corners_mean": 5.93,
+        "half_ratio_used": 0.3943,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.79,
+            "p_under": 0.21,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.673,
+            "p_under": 0.327,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.535,
+            "p_under": 0.465,
+            "recommendation": null
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.393,
+            "p_under": 0.607,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.264,
+            "p_under": 0.736,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.161,
+            "p_under": 0.839,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.574,
+            "p_under": 0.426,
+            "recommendation": null
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.34,
+            "p_under": 0.66,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.156,
+            "p_under": 0.844,
+            "recommendation": "UNDER"
+          }
+        ]
+      },
+      {
+        "league": "E3",
+        "home_team": "Gillingham",
+        "away_team": "Crawley Town",
+        "input_home": "Gillingham",
+        "input_away": "Crawley",
+        "fuzzy_used": true,
+        "pred_home_corners_mean": 5.54,
+        "pred_away_corners_mean": 4.16,
+        "pred_total_corners_mean": 9.7,
+        "pred_total_corners_range": [
+          6.95,
+          12.45
+        ],
+        "pred_1h_corners_mean": 3.82,
+        "pred_2h_corners_mean": 5.88,
+        "half_ratio_used": 0.3943,
+        "total_corner_lines": [
+          {
+            "line": 7.5,
+            "p_over": 0.783,
+            "p_under": 0.217,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 8.5,
+            "p_over": 0.662,
+            "p_under": 0.338,
+            "recommendation": "OVER"
+          },
+          {
+            "line": 9.5,
+            "p_over": 0.522,
+            "p_under": 0.478,
+            "recommendation": null
+          },
+          {
+            "line": 10.5,
+            "p_over": 0.379,
+            "p_under": 0.621,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 11.5,
+            "p_over": 0.251,
+            "p_under": 0.749,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 12.5,
+            "p_over": 0.15,
+            "p_under": 0.85,
+            "recommendation": "UNDER"
+          }
+        ],
+        "first_half_lines": [
+          {
+            "line": 3.5,
+            "p_over": 0.566,
+            "p_under": 0.434,
+            "recommendation": null
+          },
+          {
+            "line": 4.5,
+            "p_over": 0.33,
+            "p_under": 0.67,
+            "recommendation": "UNDER"
+          },
+          {
+            "line": 5.5,
+            "p_over": 0.148,
+            "p_under": 0.852,
+            "recommendation": "UNDER"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "feature_columns": [
+    "HS",
+    "AS",
+    "HST",
+    "AST",
+    "HF",
+    "AF",
+    "HC",
+    "AC",
+    "HS_x_HST",
+    "AS_x_AST",
+    "Shots_Ratio",
+    "Corners_Ratio",
+    "Home_roll_GF",
+    "Home_roll_GA",
+    "Away_roll_GF",
+    "Away_roll_GA",
+    "Home_roll_ShotsF",
+    "Home_roll_ShotsA",
+    "Away_roll_ShotsF",
+    "Away_roll_ShotsA"
+  ],
+  "rolling_window": 6,
+  "hash_curated": "76b27682a085ba3b215abaf388723a7692c264539bec461f0baf8002dbb058b3",
+  "leagues": [
+    "E0"
+  ],
+  "seasons": [
+    "2324",
+    "2425"
+  ]
+}

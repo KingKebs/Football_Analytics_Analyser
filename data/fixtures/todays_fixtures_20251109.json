@@ -1,0 +1,242 @@
+[
+  {
+    "date": "",
+    "league": "FRANCE",
+    "competition": "Ligue 1",
+    "time": "16:00",
+    "home": "Lorient",
+    "away": "Toulouse"
+  },
+  {
+    "date": "",
+    "league": "FRANCE",
+    "competition": "Ligue 1",
+    "time": "18:15",
+    "home": "Angers",
+    "away": "Auxerre"
+  },
+  {
+    "date": "",
+    "league": "FRANCE",
+    "competition": "Ligue 1",
+    "time": "18:15",
+    "home": "Metz",
+    "away": "Nice"
+  },
+  {
+    "date": "",
+    "league": "FRANCE",
+    "competition": "Ligue 1",
+    "time": "18:15",
+    "home": "Strasbourg",
+    "away": "Lille"
+  },
+  {
+    "date": "",
+    "league": "FRANCE",
+    "competition": "Ligue 1",
+    "time": "21:45",
+    "home": "Lyon",
+    "away": "PSG"
+  },
+  {
+    "date": "",
+    "league": "GERMANY",
+    "competition": "Bundesliga",
+    "time": "16:30",
+    "home": "Freiburg",
+    "away": "St. Pauli"
+  },
+  {
+    "date": "",
+    "league": "GERMANY",
+    "competition": "Bundesliga",
+    "time": "18:30",
+    "home": "Stuttgart",
+    "away": "Augsburg"
+  },
+  {
+    "date": "",
+    "league": "GERMANY",
+    "competition": "Bundesliga",
+    "time": "20:30",
+    "home": "Eintracht Frankfurt",
+    "away": "Mainz"
+  },
+  {
+    "date": "",
+    "league": "ITALY",
+    "competition": "Serie A",
+    "time": "16:00",
+    "home": "Bologna",
+    "away": "Napoli"
+  },
+  {
+    "date": "",
+    "league": "ITALY",
+    "competition": "Serie A",
+    "time": "16:00",
+    "home": "Genoa",
+    "away": "Fiorentina"
+  },
+  {
+    "date": "",
+    "league": "ITALY",
+    "competition": "Serie A",
+    "time": "19:00",
+    "home": "AS Roma",
+    "away": "Udinese"
+  },
+  {
+    "date": "",
+    "league": "ITALY",
+    "competition": "Serie A",
+    "time": "21:45",
+    "home": "Inter",
+    "away": "Lazio"
+  },
+  {
+    "date": "",
+    "league": "NETHERLANDS",
+    "competition": "Eredivisie",
+    "time": "15:30",
+    "home": "Nijmegen",
+    "away": "Groningen"
+  },
+  {
+    "date": "",
+    "league": "NETHERLANDS",
+    "competition": "Eredivisie",
+    "time": "17:45",
+    "home": "AZ Alkmaar",
+    "away": "PSV"
+  },
+  {
+    "date": "",
+    "league": "NETHERLANDS",
+    "competition": "Eredivisie",
+    "time": "21:00",
+    "home": "G.A. Eagles",
+    "away": "Feyenoord"
+  },
+  {
+    "date": "",
+    "league": "PORTUGAL",
+    "competition": "Liga Portugal",
+    "time": "17:30",
+    "home": "AFS",
+    "away": "Gil Vicente"
+  },
+  {
+    "date": "",
+    "league": "PORTUGAL",
+    "competition": "Liga Portugal",
+    "time": "17:30",
+    "home": "Estrela",
+    "away": "Nacional"
+  },
+  {
+    "date": "",
+    "league": "PORTUGAL",
+    "competition": "Liga Portugal",
+    "time": "20:00",
+    "home": "Famalicao",
+    "away": "FC Porto"
+  },
+  {
+    "date": "",
+    "league": "PORTUGAL",
+    "competition": "Liga Portugal",
+    "time": "22:30",
+    "home": "Benfica",
+    "away": "Casa Pia"
+  },
+  {
+    "date": "",
+    "league": "PORTUGAL",
+    "competition": "Liga Portugal",
+    "time": "22:30",
+    "home": "Braga",
+    "away": "Moreirense"
+  },
+  {
+    "date": "",
+    "league": "SPAIN",
+    "competition": "LaLiga",
+    "time": "15:00",
+    "home": "Ath Bilbao",
+    "away": "Oviedo"
+  },
+  {
+    "date": "",
+    "league": "SPAIN",
+    "competition": "LaLiga",
+    "time": "17:15",
+    "home": "Rayo Vallecano",
+    "away": "Real Madrid"
+  },
+  {
+    "date": "",
+    "league": "SPAIN",
+    "competition": "LaLiga",
+    "time": "19:30",
+    "home": "Mallorca",
+    "away": "Getafe"
+  },
+  {
+    "date": "",
+    "league": "SPAIN",
+    "competition": "LaLiga",
+    "time": "19:30",
+    "home": "Valencia",
+    "away": "Betis"
+  },
+  {
+    "date": "",
+    "league": "SPAIN",
+    "competition": "LaLiga",
+    "time": "22:00",
+    "home": "Celta Vigo",
+    "away": "Barcelona"
+  },
+  {
+    "date": "",
+    "league": "ENGLAND",
+    "competition": "Premier League",
+    "time": "16:00",
+    "home": "Aston Villa",
+    "away": "Bournemouth"
+  },
+  {
+    "date": "",
+    "league": "ENGLAND",
+    "competition": "Premier League",
+    "time": "16:00",
+    "home": "Brentford",
+    "away": "Newcastle"
+  },
+  {
+    "date": "",
+    "league": "ENGLAND",
+    "competition": "Premier League",
+    "time": "16:00",
+    "home": "Crystal Palace",
+    "away": "Brighton"
+  },
+  {
+    "date": "",
+    "league": "ENGLAND",
+    "competition": "Premier League",
+    "time": "16:00",
+    "home": "Nottingham",
+    "away": "Leeds"
+  },
+  {
+    "date": "",
+    "league": "ENGLAND",
+    "competition": "Premier League",
+    "time": "18:30",
+    "home": "Manchester City",
+    "away": "Liverpool"
+  }
+]

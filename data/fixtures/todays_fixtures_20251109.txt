@@ -1,0 +1,229 @@
+FRANCE:
+Ligue 1
+
+16:00
+Lorient
+Lorient
+Toulouse
+Toulouse
+
+18:15
+Angers
+Angers
+Auxerre
+Auxerre
+
+18:15
+Metz
+Metz
+Nice
+Nice
+
+18:15
+Strasbourg
+Strasbourg
+Lille
+Lille
+
+21:45
+Lyon
+Lyon
+PSG
+PSG
+
+GERMANY:
+Bundesliga
+
+16:30
+Freiburg
+Freiburg
+St. Pauli
+St. Pauli
+
+18:30
+Stuttgart
+Stuttgart
+Augsburg
+Augsburg
+
+20:30
+Eintracht Frankfurt
+Eintracht Frankfurt
+Mainz
+Mainz
+
+ITALY:
+Serie A
+
+14
+Atalanta
+Atalanta
+Sassuolo
+Sassuolo
+0
+0
+
+16:00
+Bologna
+Bologna
+Napoli
+Napoli
+
+16:00
+Genoa
+Genoa
+Fiorentina
+Fiorentina
+
+19:00
+AS Roma
+AS Roma
+Udinese
+Udinese
+
+21:45
+Inter
+Inter
+Lazio
+Lazio
+
+NETHERLANDS:
+Eredivisie
+
+27
+Utrecht
+Utrecht
+Ajax
+Ajax
+0
+0
+
+15:30
+Nijmegen
+Nijmegen
+Groningen
+Groningen
+-
+-
+
+17:45
+AZ Alkmaar
+AZ Alkmaar
+PSV
+PSV
+-
+-
+
+21:00
+G.A. Eagles
+G.A. Eagles
+Feyenoord
+Feyenoord
+-
+-
+
+PORTUGAL:
+Liga Portugal
+
+17:30
+AFS
+AFS
+Gil Vicente
+Gil Vicente
+-
+
+17:30
+Estrela
+Estrela
+Nacional
+Nacional
+-
+20:00
+Famalicao
+Famalicao
+FC Porto
+FC Porto
+-
+22:30
+Benfica
+Benfica
+Casa Pia
+Casa Pia
+-
+-
+
+22:30
+Braga
+Braga
+Moreirense
+Moreirense
+-
+-
+
+SPAIN:
+LaLiga
+
+15:00
+Ath Bilbao
+Ath Bilbao
+Oviedo
+Oviedo
+
+17:15
+Rayo Vallecano
+Rayo Vallecano
+Real Madrid
+Real Madrid
+
+19:30
+Mallorca
+Mallorca
+Getafe
+Getafe
+
+19:30
+Valencia
+Valencia
+Betis
+Betis
+
+22:00
+Celta Vigo
+Celta Vigo
+Barcelona
+Barcelona
+
+
+ENGLAND:
+Premier League
+
+16:00
+Aston Villa
+Aston Villa
+Bournemouth
+Bournemouth
+
+16:00
+Brentford
+Brentford
+Newcastle
+Newcastle
+
+16:00
+Crystal Palace
+Crystal Palace
+Brighton
+Brighton
+
+16:00
+Nottingham
+Nottingham
+Leeds
+Leeds
+
+18:30
+Manchester City
+Manchester City
+Liverpool
+Liverpool
+

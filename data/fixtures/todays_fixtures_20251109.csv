@@ -1,0 +1,31 @@
+date,league,competition,time,home,away
+,FRANCE,Ligue 1,16:00,Lorient,Toulouse
+,FRANCE,Ligue 1,18:15,Angers,Auxerre
+,FRANCE,Ligue 1,18:15,Metz,Nice
+,FRANCE,Ligue 1,18:15,Strasbourg,Lille
+,FRANCE,Ligue 1,21:45,Lyon,PSG
+,GERMANY,Bundesliga,16:30,Freiburg,St. Pauli
+,GERMANY,Bundesliga,18:30,Stuttgart,Augsburg
+,GERMANY,Bundesliga,20:30,Eintracht Frankfurt,Mainz
+,ITALY,Serie A,16:00,Bologna,Napoli
+,ITALY,Serie A,16:00,Genoa,Fiorentina
+,ITALY,Serie A,19:00,AS Roma,Udinese
+,ITALY,Serie A,21:45,Inter,Lazio
+,NETHERLANDS,Eredivisie,15:30,Nijmegen,Groningen
+,NETHERLANDS,Eredivisie,17:45,AZ Alkmaar,PSV
+,NETHERLANDS,Eredivisie,21:00,G.A. Eagles,Feyenoord
+,PORTUGAL,Liga Portugal,17:30,AFS,Gil Vicente
+,PORTUGAL,Liga Portugal,17:30,Estrela,Nacional
+,PORTUGAL,Liga Portugal,20:00,Famalicao,FC Porto
+,PORTUGAL,Liga Portugal,22:30,Benfica,Casa Pia
+,PORTUGAL,Liga Portugal,22:30,Braga,Moreirense
+,SPAIN,LaLiga,15:00,Ath Bilbao,Oviedo
+,SPAIN,LaLiga,17:15,Rayo Vallecano,Real Madrid
+,SPAIN,LaLiga,19:30,Mallorca,Getafe
+,SPAIN,LaLiga,19:30,Valencia,Betis
+,SPAIN,LaLiga,22:00,Celta Vigo,Barcelona
+,ENGLAND,Premier League,16:00,Aston Villa,Bournemouth
+,ENGLAND,Premier League,16:00,Brentford,Newcastle
+,ENGLAND,Premier League,16:00,Crystal Palace,Brighton
+,ENGLAND,Premier League,16:00,Nottingham,Leeds
+,ENGLAND,Premier League,18:30,Manchester City,Liverpool

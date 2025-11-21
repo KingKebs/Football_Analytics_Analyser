@@ -1,0 +1,166 @@
+{
+  "ENGLAND": {
+    "Premier League": {
+      "Standings": {},
+      "Fixtures": [
+        {
+          "time": "14:30",
+          "home": "Burnley",
+          "away": "Chelsea"
+        },
+        {
+          "time": "17:00",
+          "home": "Bournemouth",
+          "away": "West Ham"
+        },
+        {
+          "time": "17:00",
+          "home": "Brighton",
+          "away": "Brentford"
+        },
+        {
+          "time": "17:00",
+          "home": "Fulham",
+          "away": "Sunderland"
+        },
+        {
+          "time": "17:00",
+          "home": "Liverpool",
+          "away": "Nottingham"
+        },
+        {
+          "time": "17:00",
+          "home": "Wolves",
+          "away": "Crystal Palace"
+        },
+        {
+          "time": "19:30",
+          "home": "Newcastle",
+          "away": "Manchester City"
+        }
+      ]
+    }
+  },
+
+  "FRANCE": {
+    "Ligue 1": {
+      "Standings": {},
+      "Fixtures": [
+        {
+          "time": "18:00",
+          "home": "Lens",
+          "away": "Strasbourg"
+        },
+        {
+          "time": "20:00",
+          "home": "Rennes",
+          "away": "Monaco"
+        },
+        {
+          "time": "22:05",
+          "home": "PSG",
+          "away": "Le Havre"
+        }
+      ]
+    }
+  },
+
+  "GERMANY": {
+    "Bundesliga": {
+      "Standings": {},
+      "Fixtures": [
+        {
+          "time": "16:30",
+          "home": "Augsburg",
+          "away": "Hamburger SV"
+        },
+        {
+          "time": "16:30",
+          "home": "Bayern Munich",
+          "away": "Freiburg"
+        },
+        {
+          "time": "16:30",
+          "home": "Dortmund",
+          "away": "Stuttgart"
+        },
+        {
+          "time": "16:30",
+          "home": "Heidenheim",
+          "away": "B. Monchengladbach"
+        },
+        {
+          "time": "16:30",
+          "home": "Wolfsburg",
+          "away": "Bayer Leverkusen"
+        },
+        {
+          "time": "19:30",
+          "home": "FC Koln",
+          "away": "Eintracht Frankfurt"
+        }
+      ]
+    }
+  },
+
+  "ITALY": {
+    "Serie A": {
+      "Standings": {},
+      "Fixtures": [
+        {
+          "time": "16:00",
+          "home": "Cagliari",
+          "away": "Genoa"
+        },
+        {
+          "time": "16:00",
+          "home": "Udinese",
+          "away": "Bologna"
+        },
+        {
+          "time": "19:00",
+          "home": "Fiorentina",
+          "away": "Juventus"
+        },
+        {
+          "time": "21:45",
+          "home": "Napoli",
+          "away": "Atalanta"
+        }
+      ]
+    }
+  },
+
+  "NETHERLANDS": {
+    "Eredivisie": {
+      "Standings": {},
+      "Fixtures": [
+        {
+          "time": "17:30",
+          "home": "NAC Breda",
+          "away": "PSV"
+        },
+        {
+          "time": "19:45",
+          "home": "Ajax",
+          "away": "Excelsior"
+        },
+        {
+          "time": "19:45",
+          "home": "FC Volendam",
+          "away": "Twente"
+        },
+        {
+          "time": "22:00",
+          "home": "Heracles",
+          "away": "G.A. Eagles"
+        },
+        {
+          "time": "22:00",
+          "home": "Sparta Rotterdam",
+          "away": "Sittard"
+        }
+      ]
+    }
+  }
+}

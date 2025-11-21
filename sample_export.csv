@@ -1,0 +1,10 @@
+Match Suggestions
+Home,Away,XG Home,XG Away,Pick Market,Pick Selection,Probability,Odds
+Manchester City,Liverpool,2.45,1.23,1X2,Home,0.65,1.54
+Manchester City,Liverpool,2.45,1.23,BTTS,Yes,0.72,1.39
+Arsenal,Chelsea,1.89,1.67,Over/Under 2.5,Over2.5,0.78,1.28
+
+Favorable Parlays
+Size,Legs,Probability,Decimal Odds,Stake Suggestion,Potential Return
+2,Manchester City v Liverpool (1X2 Home); Arsenal v Chelsea (Over2.5),0.51,1.97,25.0,49.25
+3,Manchester City v Liverpool (BTTS Yes); Arsenal v Chelsea (Over2.5); Another Match,0.56,2.34,20.0,46.8

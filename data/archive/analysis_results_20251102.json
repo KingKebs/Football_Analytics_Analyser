@@ -1,0 +1,223 @@
+{
+  "per_match": [
+    {
+      "home": "Arsenal",
+      "away": "Aston Villa",
+      "result": null,
+      "picks": [
+        {
+          "pick": {
+            "market": "1X2",
+            "selection": "Home",
+            "prob": 0.6461966189244893,
+            "odds": 1.55
+          },
+          "won": null
+        },
+        {
+          "pick": {
+            "market": "BTTS",
+            "selection": "No",
+            "prob": 0.6195341658740557,
+            "odds": 1.61
+          },
+          "won": null
+        }
+      ]
+    },
+    {
+      "home": "Bournemouth",
+      "away": "Brentford",
+      "result": null,
+      "picks": [
+        {
+          "pick": {
+            "market": "BTTS",
+            "selection": "Yes",
+            "prob": 0.7509594762581513,
+            "odds": 1.33
+          },
+          "won": null
+        },
+        {
+          "pick": {
+            "market": "Over/Under 2.5",
+            "selection": "Over2.5",
+            "prob": 0.7777834634002431,
+            "odds": 1.29
+          },
+          "won": null
+        }
+      ]
+    },
+    {
+      "home": "Brighton",
+      "away": "Burnley",
+      "result": null,
+      "picks": [
+        {
+          "pick": {
+            "market": "1X2",
+            "selection": "Home",
+            "prob": 0.6397742208573259,
+            "odds": 1.56
+          },
+          "won": null
+        },
+        {
+          "pick": {
+            "market": "BTTS",
+            "selection": "Yes",
+            "prob": 0.6446781087917824,
+            "odds": 1.55
+          },
+          "won": null
+        },
+        {
+          "pick": {
+            "market": "Over/Under 2.5",
+            "selection": "Over2.5",
+            "prob": 0.7075560814728565,
+            "odds": 1.41
+          },
+          "won": null
+        }
+      ]
+    },
+    {
+      "home": "Chelsea",
+      "away": "Crystal Palace",
+      "result": null,
+      "picks": [
+        {
+          "pick": {
+            "market": "BTTS",
+            "selection": "Yes",
+            "prob": 0.7811600633504067,
+            "odds": 1.28
+          },
+          "won": null
+        },
+        {
+          "pick": {
+            "market": "Over/Under 2.5",
+            "selection": "Over2.5",
+            "prob": 0.8281221976350619,
+            "odds": 1.21
+          },
+          "won": null
+        }
+      ]
+    },
+    {
+      "home": "Everton",
+      "away": "Fulham",
+      "result": null,
+      "picks": [
+        {
+          "pick": {
+            "market": "1X2",
+            "selection": "Home",
+            "prob": 0.6158526655851914,
+            "odds": 1.62
+          },
+          "won": null
+        }
+      ]
+    },
+    {
+      "home": "Leeds",
+      "away": "Liverpool",
+      "result": null,
+      "picks": [
+        {
+          "pick": {
+            "market": "BTTS",
+            "selection": "Yes",
+            "prob": 0.6570657165517174,
+            "odds": 1.52
+          },
+          "won": null
+        }
+      ]
+    },
+    {
+      "home": "Man City",
+      "away": "Man United",
+      "result": null,
+      "picks": [
+        {
+          "pick": {
+            "market": "1X2",
+            "selection": "Home",
+            "prob": 0.642336904593005,
+            "odds": 1.56
+          },
+          "won": null
+        },
+        {
+          "pick": {
+            "market": "BTTS",
+            "selection": "Yes",
+            "prob": 0.6917491603253306,
+            "odds": 1.45
+          },
+          "won": null
+        },
+        {
+          "pick": {
+            "market": "Over/Under 2.5",
+            "selection": "Over2.5",
+            "prob": 0.7603800067311072,
+            "odds": 1.32
+          },
+          "won": null
+        }
+      ]
+    },
+    {
+      "home": "Newcastle",
+      "away": "Nott'm Forest",
+      "result": null,
+      "picks": []
+    },
+    {
+      "home": "Sunderland",
+      "away": "Tottenham",
+      "result": null,
+      "picks": []
+    },
+    {
+      "home": "West Ham",
+      "away": "Wolves",
+      "result": null,
+      "picks": [
+        {
+          "pick": {
+            "market": "BTTS",
+            "selection": "Yes",
+            "prob": 0.7285323433798102,
+            "odds": 1.37
+          },
+          "won": null
+        },
+        {
+          "pick": {
+            "market": "Over/Under 2.5",
+            "selection": "Over2.5",
+            "prob": 0.7371931219658765,
+            "odds": 1.36
+          },
+          "won": null
+        }
+      ]
+    }
+  ],
+  "market_acc": {},
+  "overall_acc": [
+    0,
+    0,
+    null
+  ],
+  "failed": []
+}
