@@ -431,7 +431,7 @@ class FootballAnalyticsCLI:
         # 1) Corner predictions from match log via automate_corner_predictions.py
         if args.input:
             import subprocess
-            cmd = [sys.executable, 'automate_corner_predictions.py', '--input', args.input]
+            cmd = [sys.executable, 'src/automate_corner_predictions.py', '--input', args.input]
             if args.leagues:
                 cmd.extend(['--leagues', args.leagues])
             if args.train_model:
@@ -451,7 +451,7 @@ class FootballAnalyticsCLI:
 
         # 2) Extended corners_analysis.py path (supports new flags)
         import subprocess
-        corner_cmd = [sys.executable, 'corners_analysis.py']
+        corner_cmd = [sys.executable, 'src/corners_analysis.py']
         # league selection: if args.leagues then pass combined, else single league
         if args.leagues:
             corner_cmd.extend(['--league', args.leagues])
