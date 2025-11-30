@@ -29,10 +29,11 @@ New to this project? **Read this first:**
 
 ### For End Users (Want to analyze football data)
 1. Read: **QUICK_REFERENCE.md** (5 min)
-2. Run: `python setup.py` (1 min)
+2. Run: `./test_system.sh` (3 min) - Verify system functionality
 3. Run: `python cli.py --task help` (1 min)
 4. Try: `python cli.py --task full-league --league E0`
-5. Refer back to **QUICK_REFERENCE.md** as needed
+5. Refer to: **FUNCTIONALITY_VERIFICATION.md** for test scripts
+6. Refer back to **QUICK_REFERENCE.md** as needed
 
 ### For Developers (Want to understand the architecture)
 1. Read: **DELIVERY_SUMMARY.md** (10 min)
@@ -89,7 +90,22 @@ New to this project? **Read this first:**
 - **Read Time:** 10 minutes
 - **Key Takeaway:** Complete overview of the modernization
 
-#### 3. **SYSTEM_OVERVIEW.md**
+#### 3. **FUNCTIONALITY_VERIFICATION.md** ⭐ NEW
+- **Best For:** Testing and verifying system functionality
+- **Contains:**
+  - Complete test scripts for all features
+  - Double Chance market testing
+  - ML integration verification
+  - Parallel processing benchmarks
+  - Corner analysis tests
+  - Performance comparison scripts
+  - Output verification commands
+  - Daily workflow scripts
+  - Troubleshooting commands
+- **Read Time:** 15 minutes
+- **Key Takeaway:** Ready-to-run scripts for every feature
+
+#### 4. **SYSTEM_OVERVIEW.md**
 - **Best For:** Complete system understanding
 - **Contains:**
   - Executive summary
