@@ -174,7 +174,58 @@ python3 scripts/run_selected_competitions.py \
 
 ---
 
-## **6. ✅ Data Conversion & Processing**
+## **6. ✅ Automated Fixtures Download** 
+
+### **Test Scripts:**
+
+#### **Download Today's Fixtures:**
+```bash
+# Download fixtures for today (dry run first)
+python3 cli.py --task download-fixtures --update-today --dry-run --verbose
+
+# Download fixtures for today (live)
+python3 cli.py --task download-fixtures --update-today --verbose
+
+# Download specific date
+python3 cli.py --task download-fixtures --date 2025-12-01 --verbose
+
+# Download for specific leagues only
+python3 cli.py --task download-fixtures --leagues "Championship,League One" --update-today
+```
+
+#### **Test Automated Scheduler:**
+```bash
+# Test daily update workflow
+python3 fixtures_scheduler.py --daily-update --dry-run
+
+# Test complete workflow (download + analysis)
+python3 fixtures_scheduler.py --update-and-analyze --dry-run
+
+# Test the test suite
+python3 test_fixtures_download.py
+```
+
+### **Expected Output:**
+- Updated `data/raw/upcomingMatches.json` with fresh fixtures
+- Team names standardized and compatible with analysis
+- Multiple API sources attempted with fallbacks
+- Caching to reduce API calls
+
+### **Verification:**
+```bash
+# Check if fixtures were downloaded
+ls -la data/raw/upcomingMatches.json
+
+# Verify JSON structure
+python3 -c "import json; data=json.load(open('data/raw/upcomingMatches.json')); print(f'Leagues: {list(data.get(\"ENGLAND\", {}).keys())}')"
+
+# Check cache file
+ls -la data/cache/fixtures_cache.json
+```
+
+---
+
+## **7. ✅ Data Conversion & Processing**
 
 ### **Test Scripts:**
 

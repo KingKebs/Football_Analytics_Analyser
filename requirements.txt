@@ -12,3 +12,8 @@ streamlit
 xgboost>=2.0.0
 scikit-learn>=1.3.0
 PyYAML>=6.0
+
+# Web scraping dependencies (for automated fixture downloads)
+beautifulsoup4>=4.9.0
+lxml>=4.9.0
+
