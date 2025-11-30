@@ -1,4 +1,4 @@
-# Corner Predictions: Manual vs Automated Workflow Comparison
+dc# Corner Predictions: Manual vs Automated Workflow Comparison
 
 ## Overview
 This document compares the manual interactive workflow using `corners_analysis.py` directly versus the automated batch workflow using `automate_corner_predictions.py`.

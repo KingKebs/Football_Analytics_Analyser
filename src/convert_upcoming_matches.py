@@ -86,8 +86,30 @@ def normalize_time(t: str) -> str:
     return f"{h:02d}:{mnt}"
 
 
-def convert(data: dict, out_date: str) -> list:
+def convert(data, out_date: str) -> list:
     fixtures_out = []
+    # If input is a flat list, process directly
+    if isinstance(data, list):
+        for fx in data:
+            home = fx.get('home') or fx.get('Home') or ''
+            away = fx.get('away') or fx.get('Away') or ''
+            time = normalize_time(fx.get('time') or fx.get('Time') or '')
+            league_code = fx.get('league') or ''
+            competition = fx.get('competition') or ''
+            status = fx.get('status') or 'Scheduled'
+            if not home or not away:
+                continue
+            fixtures_out.append({
+                'date': out_date,
+                'league': league_code,
+                'competition': competition,
+                'time': time,
+                'home': home,
+                'away': away,
+                'status': status
+            })
+        return fixtures_out
+    # Otherwise, process hierarchical format
     for country, comps in data.items():
         if not isinstance(comps, dict):
             continue
@@ -167,4 +189,3 @@ def main():
 
 if __name__ == '__main__':
     raise SystemExit(main())
-

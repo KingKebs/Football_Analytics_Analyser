@@ -269,6 +269,16 @@ def extract_markets_from_score_matrix(mat: pd.DataFrame, min_confidence: float =
         if s > 0:
             markets['1X2'] = {'Home': pH / s, 'Draw': pD / s, 'Away': pA / s}
 
+    # Add Double Chance (DC) markets derived from (possibly overridden) 1X2 probabilities
+    pH_dc = markets['1X2']['Home']
+    pD_dc = markets['1X2']['Draw']
+    pA_dc = markets['1X2']['Away']
+    markets['DC'] = {
+        '1X': pH_dc + pD_dc,
+        'X2': pD_dc + pA_dc,
+        '12': pH_dc + pA_dc,
+    }
+
     # Filter and log high-confidence markets
     selected = {}
     for market, options in markets.items():

@@ -227,7 +227,8 @@ def load_historical_matches(data_dir: str = DATA_DIR, subfolder: str = OLD_CSV_S
     return all_df
 
 
-def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: pd.DataFrame, min_confidence: float = 0.6, rating_models: Dict = None, history_df: pd.DataFrame = None, rating_model_config: Dict = None) -> Dict:
+def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: pd.DataFrame, min_confidence: float = 0.6, rating_models: Dict = None, history_df: pd.DataFrame = None, rating_model_config: Dict = None,
+                                  enable_double_chance: bool = False, dc_min_prob: float = 0.75, dc_secondary_threshold: float = 0.80, dc_allow_multiple: bool = False) -> Dict:
     # Compute xG and score matrix first (needed for Poisson probabilities and markets)
     xg_home, xg_away = estimate_xg(home_team, away_team, strengths_df)
     mat = score_probability_matrix(xg_home, xg_away, max_goals=6)
@@ -270,30 +271,40 @@ def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: 
 
     markets = extract_markets_from_score_matrix(mat, min_confidence=min_confidence, external_probs=external_probs)
     corners = estimate_corners_and_cards(xg_home, xg_away)
-
     picks = []
     one_x_two = markets.get('1X2', {})
-    if one_x_two:
-        best_1x2 = max(one_x_two.items(), key=lambda x: x[1])
+    dc_markets = markets.get('DC', {}) if enable_double_chance else {}
+    best_1x2 = max(one_x_two.items(), key=lambda x: x[1]) if one_x_two else None
+    chosen_dc = None
+    if enable_double_chance and dc_markets:
+        best_dc = max(dc_markets.items(), key=lambda x: x[1])
+        if best_1x2:
+            b_prob = float(best_1x2[1])
+            if b_prob < dc_min_prob and float(best_dc[1]) >= dc_min_prob:
+                chosen_dc = best_dc
+            elif b_prob >= dc_min_prob and float(best_dc[1]) >= dc_secondary_threshold:
+                chosen_dc = best_dc
+        else:
+            if float(best_dc[1]) >= dc_min_prob:
+                chosen_dc = best_dc
+    if best_1x2 and (not chosen_dc or dc_allow_multiple):
         picks.append({'market': '1X2', 'selection': best_1x2[0], 'prob': float(best_1x2[1]), 'odds': prob_to_decimal_odds(float(best_1x2[1]))})
+    if chosen_dc:
+        picks.append({'market': 'Double Chance', 'selection': chosen_dc[0], 'prob': float(chosen_dc[1]), 'odds': prob_to_decimal_odds(float(chosen_dc[1]))})
 
     btts = markets.get('BTTS', {})
-    btts_no = float(btts.get('No', 0))
-    btts_yes = float(btts.get('Yes', 0))
+    btts_no = float(btts.get('No', 0)); btts_yes = float(btts.get('Yes', 0))
     if btts_no > 0.6:
         picks.append({'market': 'BTTS', 'selection': 'No', 'prob': btts_no, 'odds': prob_to_decimal_odds(btts_no)})
     elif btts_yes > 0.6:
         picks.append({'market': 'BTTS', 'selection': 'Yes', 'prob': btts_yes, 'odds': prob_to_decimal_odds(btts_yes)})
-
     ou = markets.get('OU', {})
-    ou_under = float(ou.get('Under2.5', 0))
-    ou_over = float(ou.get('Over2.5', 0))
+    ou_under = float(ou.get('Under2.5', 0)); ou_over = float(ou.get('Over2.5', 0))
     if ou_under > 0.7:
         picks.append({'market': 'Over/Under 2.5', 'selection': 'Under2.5', 'prob': ou_under, 'odds': prob_to_decimal_odds(ou_under)})
     elif ou_over > 0.7:
         picks.append({'market': 'Over/Under 2.5', 'selection': 'Over2.5', 'prob': ou_over, 'odds': prob_to_decimal_odds(ou_over)})
-
-    suggestion = {
+    return {
         'home': home_team,
         'away': away_team,
         'xg_home': float(xg_home),
@@ -303,7 +314,6 @@ def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: 
         'picks': picks,
         'score_matrix': mat.to_dict()
     }
-    return suggestion
 
 
 def main_interactive(bankroll: float = 100.0, league_code: str = None, rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, min_confidence: float = 0.6):
@@ -375,7 +385,8 @@ def main_interactive(bankroll: float = 100.0, league_code: str = None, rating_mo
         'range_filter': rng,
     }
 
-    suggestion = build_single_match_suggestion(home, away, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+    suggestion = build_single_match_suggestion(home, away, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
+                                               enable_double_chance=parsed.enable_double_chance, dc_min_prob=parsed.dc_min_prob, dc_secondary_threshold=parsed.dc_secondary_threshold, dc_allow_multiple=parsed.dc_allow_multiple)
 
     print('\nMatch suggestion: {} v {}'.format(home, away))
     print('Estimated xG -> {}: {:.2f}, {}: {:.2f}'.format(home, suggestion['xg_home'], away, suggestion['xg_away']))
@@ -429,6 +440,10 @@ if __name__ == '__main__':
     parser.add_argument('--rating-blend-weight', type=float, default=0.3, help='Blend weight when using blended model (0..1)')
     parser.add_argument('--rating-range-filter', type=str, help='Comma-separated rating range (lo,hi); skip rating override when r is outside')
     parser.add_argument('--min-confidence', type=float, default=0.6, help='Minimum market probability to surface')
+    parser.add_argument('--enable-double-chance', action='store_true')
+    parser.add_argument('--dc-min-prob', type=float, default=0.75)
+    parser.add_argument('--dc-secondary-threshold', type=float, default=0.80)
+    parser.add_argument('--dc-allow-multiple', action='store_true')
     args = parser.parse_args()
     rng = _parse_range_filter(args.rating_range_filter)
     main_interactive(bankroll=args.bankroll, league_code=args.league, rating_model=args.rating_model, rating_last_n=args.rating_last_n, min_sample_for_rating=args.min_sample_for_rating, rating_blend_weight=args.rating_blend_weight, min_confidence=args.min_confidence)

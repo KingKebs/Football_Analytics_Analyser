@@ -57,6 +57,13 @@ data/bet_history.csv
 data/last_teams.json
 data/*.log
 
+# Generated analysis and corner model outputs
+data/analysis/full_league_suggestions_*.json
+data/corners/model_metrics_*.json
+data/corners/batch_predictions_*.json
+data/corners/parsed_corners_predictions_*.json
+data/temp/
+
 # Allow sample result CSVs used in docs
 !data/sample_results_*.csv
 

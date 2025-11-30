@@ -28,6 +28,9 @@ import logging
 import glob
 import difflib
 from data_file_utils import ensure_dirs_for_writing
+import time
+from multiprocessing.dummy import Pool as ThreadPool
+
 
 # ML imports (lazy inside functions to avoid mandatory dependency if ML not used)
 try:
@@ -419,7 +422,8 @@ def map_parsed_to_canonical(parsed_df: pd.DataFrame, strengths_df: pd.DataFrame,
     return pd.DataFrame(mapped), skipped
 
 
-def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: pd.DataFrame, min_confidence: float = 0.6, rating_models: Dict = None, history_df: pd.DataFrame = None, rating_model_config: Dict = None) -> Dict:
+def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: pd.DataFrame, min_confidence: float = 0.6, rating_models: Dict = None, history_df: pd.DataFrame = None, rating_model_config: Dict = None,
+                                  enable_double_chance: bool = False, dc_min_prob: float = 0.75, dc_secondary_threshold: float = 0.80, dc_allow_multiple: bool = False) -> Dict:
     # xG and matrix
     xg_home, xg_away = estimate_xg(home_team, away_team, strengths_df)
     mat = score_probability_matrix(xg_home, xg_away, max_goals=6)
@@ -456,16 +460,44 @@ def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: 
 
     picks = []
     one_x_two = markets.get('1X2', {})
+    dc_markets = markets.get('DC', {}) if enable_double_chance else {}
+
+    best_1x2 = None
     if one_x_two:
         best_1x2 = max(one_x_two.items(), key=lambda x: x[1])
-        picks.append({'market': '1X2', 'selection': best_1x2[0], 'prob': float(best_1x2[1]), 'odds': prob_to_decimal_odds(float(best_1x2[1]))})
 
+    # Double Chance decision logic
+    chosen_dc = None
+    if enable_double_chance and dc_markets:
+        # Evaluate highest DC option
+        best_dc = max(dc_markets.items(), key=lambda x: x[1])
+        if best_1x2:
+            b_prob = float(best_1x2[1])
+            # Prefer DC if straight 1X2 below threshold but DC strong
+            if b_prob < dc_min_prob and float(best_dc[1]) >= dc_min_prob:
+                chosen_dc = best_dc
+            # Add DC alongside strong straight pick if very high probability
+            elif b_prob >= dc_min_prob and float(best_dc[1]) >= dc_secondary_threshold:
+                chosen_dc = best_dc if dc_allow_multiple else best_dc  # will add both below
+        else:
+            # No straight pick surfaced (e.g., min_confidence filtering), but DC maybe available
+            if float(best_dc[1]) >= dc_min_prob:
+                chosen_dc = best_dc
+
+    # Add picks respecting selection logic
+    if best_1x2 and (not chosen_dc or (chosen_dc and dc_allow_multiple)):
+        picks.append({'market': '1X2', 'selection': best_1x2[0], 'prob': float(best_1x2[1]), 'odds': prob_to_decimal_odds(float(best_1x2[1]))})
+    if chosen_dc:
+        picks.append({'market': 'Double Chance', 'selection': chosen_dc[0], 'prob': float(chosen_dc[1]), 'odds': prob_to_decimal_odds(float(chosen_dc[1]))})
+
+    # BTTS
     btts = markets.get('BTTS', {})
     if float(btts.get('No', 0)) > 0.6:
         picks.append({'market': 'BTTS', 'selection': 'No', 'prob': float(btts['No']), 'odds': prob_to_decimal_odds(float(btts['No']))})
     elif float(btts.get('Yes', 0)) > 0.6:
         picks.append({'market': 'BTTS', 'selection': 'Yes', 'prob': float(btts['Yes']), 'odds': prob_to_decimal_odds(float(btts['Yes']))})
 
+    # Over/Under 2.5
     ou = markets.get('OU', {})
     if float(ou.get('Under2.5', 0)) > 0.7:
         p = float(ou['Under2.5'])
@@ -486,12 +518,14 @@ def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: 
     }
 
 
-def build_league_suggestions(fixtures_df: pd.DataFrame, strengths_df: pd.DataFrame, min_confidence: float = 0.6, rating_models: Dict = None, history_df: pd.DataFrame = None, rating_model_config: Dict = None) -> List[Dict]:
+def build_league_suggestions(fixtures_df: pd.DataFrame, strengths_df: pd.DataFrame, min_confidence: float = 0.6, rating_models: Dict = None, history_df: pd.DataFrame = None, rating_model_config: Dict = None,
+                             enable_double_chance: bool = False, dc_min_prob: float = 0.75, dc_secondary_threshold: float = 0.80, dc_allow_multiple: bool = False) -> List[Dict]:
     suggestions: List[Dict] = []
     for _, row in fixtures_df.iterrows():
         home = str(row['HomeTeam'])
         away = str(row['AwayTeam'])
-        s = build_single_match_suggestion(home, away, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+        s = build_single_match_suggestion(home, away, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
+                                          enable_double_chance=enable_double_chance, dc_min_prob=dc_min_prob, dc_secondary_threshold=dc_secondary_threshold, dc_allow_multiple=dc_allow_multiple)
         suggestions.append(s)
     return suggestions
 
@@ -501,7 +535,40 @@ def select_favorable_parlays(parlays: List[Dict], min_prob: float = 0.5, min_odd
     return sorted(favorable, key=lambda x: (x['probability'], x['decimal_odds']), reverse=True)[:10]
 
 
-def analyze_parsed_fixtures_all(parsed_df: pd.DataFrame, min_confidence: float, rating_models: Dict, history_df: pd.DataFrame, rating_model_config: Dict) -> Tuple[List[Dict], List[Dict]]:
+# Ensure parse_input_log defined early
+try:
+    parse_input_log
+except NameError:
+    def parse_input_log(path: str) -> pd.DataFrame:
+        if not path or not os.path.exists(path):
+            return pd.DataFrame()
+        try:
+            if path.lower().endswith('.csv'):
+                df = pd.read_csv(path)
+            else:
+                df = pd.read_json(path)
+        except Exception:
+            return pd.DataFrame()
+        rename_map = {}
+        for c in df.columns:
+            lc = c.lower()
+            if lc in ('hometeam','home_team','home'): rename_map[c] = 'HomeTeam'
+            elif lc in ('awayteam','away_team','away'): rename_map[c] = 'AwayTeam'
+            elif lc == 'date': rename_map[c] = 'Date'
+        if rename_map:
+            df = df.rename(columns=rename_map)
+        if 'HomeTeam' not in df.columns or 'AwayTeam' not in df.columns:
+            return pd.DataFrame()
+        if 'Date' in df.columns:
+            try: df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+            except Exception: pass
+        else:
+            df['Date'] = pd.Timestamp.now()
+        return df[['Date','HomeTeam','AwayTeam']]
+
+
+def analyze_parsed_fixtures_all(parsed_df: pd.DataFrame, min_confidence: float, rating_models: Dict, history_df: pd.DataFrame, rating_model_config: Dict,
+                                enable_double_chance: bool = False, dc_min_prob: float = 0.75, dc_secondary_threshold: float = 0.80, dc_allow_multiple: bool = False) -> Tuple[List[Dict], List[Dict]]:
     # Build global team index once
     strengths_cache: Dict[str, pd.DataFrame] = {}
     team_index: Dict[str, set] = {}
@@ -606,7 +673,8 @@ def analyze_parsed_fixtures_all(parsed_df: pd.DataFrame, min_confidence: float, 
             continue
         strengths_df = strengths_cache[league_code]
         try:
-            s = build_single_match_suggestion(home_can, away_can, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+            s = build_single_match_suggestion(home_can, away_can, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
+                                              enable_double_chance=enable_double_chance, dc_min_prob=dc_min_prob, dc_secondary_threshold=dc_secondary_threshold, dc_allow_multiple=dc_allow_multiple)
             s['league_code'] = league_code
             s['competition'] = competition
             suggestions.append(s)
@@ -616,7 +684,8 @@ def analyze_parsed_fixtures_all(parsed_df: pd.DataFrame, min_confidence: float, 
 
 
 def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parsed_all: bool = False, min_confidence: float = 0.6, risk_profile: str = 'moderate', rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, rating_range_filter=None,
-                     ml_mode: str = 'off', ml_validate: bool = False, ml_algorithms: List[str] = None, ml_decay: float = 0.85, ml_min_samples: int = 300, ml_save_models: bool = False, ml_models_dir: str = 'models', input_log: str = None):
+                     ml_mode: str = 'off', ml_validate: bool = False, ml_algorithms: List[str] = None, ml_decay: float = 0.85, ml_min_samples: int = 300, ml_save_models: bool = False, ml_models_dir: str = 'models', input_log: str = None, fixtures_date: str = None,
+                     enable_double_chance: bool = False, dc_min_prob: float = 0.75, dc_secondary_threshold: float = 0.80, dc_allow_multiple: bool = False, ml_models_shared: Dict = None, ml_feature_df_shared: pd.DataFrame = None):
     logging.info("Starting full league analytics workflow")
     logging.info(f"Bankroll={bankroll}, League={league_code}, Rating={rating_model}, ML_Mode={ml_mode}")
 
@@ -656,7 +725,12 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
     # --- ML Training Phase (optional) ---
     ml_models = None
     ml_feature_df = None
-    if ml_mode in ('train','predict'):
+    # Prefer shared precomputed models/feature frame when supplied (to avoid redoing expensive work per league)
+    if ml_feature_df_shared is not None and ml_models_shared is not None:
+        ml_feature_df = ml_feature_df_shared
+        ml_models = ml_models_shared
+        logging.debug("Using shared ML feature dataframe and models for this league")
+    elif ml_mode in ('train','predict'):
         if engineer_features is None:
             logging.warning("ML modules not available - ensure dependencies installed (scikit-learn, optional xgboost)")
         elif history_df.empty:
@@ -685,7 +759,7 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
                 logging.warning(f"ML training failed: {e}")
 
     # --- Source fixtures logic with input log override ---
-    parsed_fixtures = load_parsed_fixtures()
+    parsed_fixtures = load_parsed_fixtures(date_str=fixtures_date)
     log_df = parse_input_log(input_log) if input_log else pd.DataFrame()
 
     if not log_df.empty:
@@ -703,13 +777,15 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
                 skipped_rows.append({'HomeTeam': h_raw, 'AwayTeam': a_raw, 'home_match': (h_can, h_score), 'away_match': (a_can, a_score)})
         if matched_rows:
             fixtures_df = pd.DataFrame(matched_rows)
-            suggestions = build_league_suggestions(fixtures_df, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+            suggestions = build_league_suggestions(fixtures_df, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
+                                                   enable_double_chance=enable_double_chance, dc_min_prob=dc_min_prob, dc_secondary_threshold=dc_secondary_threshold, dc_allow_multiple=dc_allow_multiple)
             logging.info(f"Input log matches used: {len(fixtures_df)} (skipped {len(skipped_rows)})")
         else:
             logging.warning("No valid matches from input log for this league; falling back to standard fixture logic")
             fixtures_df = None
     elif use_parsed_all and not parsed_fixtures.empty:
-        suggestions, skipped = analyze_parsed_fixtures_all(parsed_fixtures, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+        suggestions, skipped = analyze_parsed_fixtures_all(parsed_fixtures, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
+                                                           enable_double_chance=enable_double_chance, dc_min_prob=dc_min_prob, dc_secondary_threshold=dc_secondary_threshold, dc_allow_multiple=dc_allow_multiple)
         if skipped:
             logging.info(f"Skipped {len(skipped)} parsed fixtures (team/league inference failures)")
             # breakdown by reason
@@ -733,7 +809,8 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
         if fixtures_df.empty:
             logging.warning("No fixtures available to analyze")
             return
-        suggestions = build_league_suggestions(fixtures_df, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config)
+        suggestions = build_league_suggestions(fixtures_df, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
+                                               enable_double_chance=enable_double_chance, dc_min_prob=dc_min_prob, dc_secondary_threshold=dc_secondary_threshold, dc_allow_multiple=dc_allow_multiple)
 
     # --- ML Prediction Augmentation ---
     if ml_models and ml_mode == 'predict' and ml_feature_df is not None:
@@ -767,11 +844,14 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
         if 'ml_prediction' in s:
             mp = s['ml_prediction']
             comp = s.get('ml_vs_poisson', {})
-            tg = mp.get('pred_total_goals')
-            if tg is not None:
-                print(f"  {Colors.MAGENTA}ML Total Goals:{Colors.RESET} {tg:.2f} (model {mp.get('pred_total_goals_model','-')})")
-            else:
-                print(f"  {Colors.MAGENTA}ML Total Goals:{Colors.RESET} -")
+            # Compute ML Double Chance probabilities from ML 1X2 probs if available
+            ml_dc_line = ''
+            if all(k in mp for k in ['prob_1x2_home','prob_1x2_draw','prob_1x2_away']):
+                pH_ml = mp['prob_1x2_home']; pD_ml = mp['prob_1x2_draw']; pA_ml = mp['prob_1x2_away']
+                ml_dc_line = f"  {Colors.MAGENTA}ML DC probs:{Colors.RESET} 1X={pH_ml+pD_ml:.2f} X2={pD_ml+pA_ml:.2f} 12={pH_ml+pA_ml:.2f}"
+            if ml_dc_line:
+                print(ml_dc_line)
+            print(f"  {Colors.MAGENTA}ML Total Goals:{Colors.RESET} {mp.get('pred_total_goals',0):.2f} (model {mp.get('pred_total_goals_model','-')})")
             print(f"  {Colors.MAGENTA}ML 1X2 probs:{Colors.RESET} H={mp.get('prob_1x2_home',0):.2f} D={mp.get('prob_1x2_draw',0):.2f} A={mp.get('prob_1x2_away',0):.2f} (model {mp.get('model_1x2','-')})")
             print(f"  {Colors.MAGENTA}ML BTTS probs:{Colors.RESET} Yes={mp.get('prob_btts_yes',0):.2f} No={mp.get('prob_btts_no',0):.2f} (model {mp.get('model_btts','-')})")
             if comp:
@@ -809,90 +889,76 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
 
 
 def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None, use_parsed_all: bool = False, min_confidence: float = 0.6, risk_profile: str = 'moderate', rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, rating_range_filter=None,
-                              ml_mode: str = 'off', ml_validate: bool = False, ml_algorithms: List[str] = None, ml_decay: float = 0.85, ml_min_samples: int = 300, ml_save_models: bool = False, ml_models_dir: str = 'models', input_log: str = None):
+                              ml_mode: str = 'off', ml_validate: bool = False, ml_algorithms: List[str] = None, ml_decay: float = 0.85, ml_min_samples: int = 300, ml_save_models: bool = False, ml_models_dir: str = 'models', input_log: str = None, fixtures_date: str = None,
+                              enable_double_chance: bool = False, dc_min_prob: float = 0.75, dc_secondary_threshold: float = 0.80, dc_allow_multiple: bool = False, parallel_workers: int = 1,
+                              shared_ml_models: Dict = None, shared_ml_feature_df: pd.DataFrame = None):
+    """Process multiple leagues; optionally runs leagues in parallel.
+
+    Adds timing logs per-league and total time. Uses a ThreadPool when parallel_workers>1 to avoid pickling issues.
+    """
     if leagues is None:
         leagues = ['E0']
-    for league_code in leagues:
+
+    start_all = time.perf_counter()
+    league_times = {}
+
+    def _process_one(league_code: str):
         logging.info(f"Processing league: {league_code}")
-        main_full_league(
-            bankroll=bankroll,
-            league_code=league_code,
-            use_parsed_all=use_parsed_all,
-            min_confidence=min_confidence,
-            risk_profile=risk_profile,
-            rating_model=rating_model,
-            rating_last_n=rating_last_n,
-            min_sample_for_rating=min_sample_for_rating,
-            rating_blend_weight=rating_blend_weight,
-            rating_range_filter=rating_range_filter,
-            ml_mode=ml_mode,
-            ml_validate=ml_validate,
-            ml_algorithms=ml_algorithms,
-            ml_decay=ml_decay,
-            ml_min_samples=ml_min_samples,
-            ml_save_models=ml_save_models,
-            ml_models_dir=ml_models_dir,
-            input_log=input_log
-        )
+        t0 = time.perf_counter()
+        try:
+            main_full_league(
+                bankroll=bankroll,
+                league_code=league_code,
+                use_parsed_all=use_parsed_all,
+                min_confidence=min_confidence,
+                risk_profile=risk_profile,
+                rating_model=rating_model,
+                rating_last_n=rating_last_n,
+                min_sample_for_rating=min_sample_for_rating,
+                rating_blend_weight=rating_blend_weight,
+                rating_range_filter=rating_range_filter,
+                ml_mode=ml_mode,
+                ml_validate=ml_validate,
+                ml_algorithms=ml_algorithms,
+                ml_decay=ml_decay,
+                ml_min_samples=ml_min_samples,
+                ml_save_models=ml_save_models,
+                ml_models_dir=ml_models_dir,
+                input_log=input_log,
+                fixtures_date=fixtures_date,
+                enable_double_chance=enable_double_chance,
+                dc_min_prob=dc_min_prob,
+                dc_secondary_threshold=dc_secondary_threshold,
+                dc_allow_multiple=dc_allow_multiple,
+                ml_models_shared=shared_ml_models,
+                ml_feature_df_shared=shared_ml_feature_df
+             )
+        finally:
+            t1 = time.perf_counter()
+            elapsed = t1 - t0
+            league_times[league_code] = elapsed
+            logging.info(f"League {league_code} finished in {elapsed:.2f}s")
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Football analytics assistant (full league)')
-    parser.add_argument('--bankroll', type=float, default=100.0, help='Estimated bankroll for stake suggestions')
-    parser.add_argument('--use-parsed-all', action='store_true', help='Analyze all parsed fixtures across leagues if available')
-    parser.add_argument('--min-confidence', type=float, default=0.6, help='Minimum market probability to surface')
-    parser.add_argument('--risk-profile', type=str, default='moderate', choices=['conservative', 'moderate', 'aggressive'], help='Risk profile label (display only)')
-    parser.add_argument('--rating-model', type=str, default='none', choices=['none', 'goal_supremacy', 'blended'], help='Rating model for 1X2 probabilities')
-    parser.add_argument('--rating-last-n', type=int, default=6, help='Number of recent matches for goal supremacy rating')
-    parser.add_argument('--min-sample-for-rating', type=int, default=30, help='Minimum sample size to fit rating models')
-    parser.add_argument('--rating-blend-weight', type=float, default=0.3, help='Blend weight when using blended model (0..1)')
-    parser.add_argument('--league', type=str, help='Single league code (alias for --leagues)')
-    parser.add_argument('--leagues', type=str, default='E0,D1,SP1,F1,I1,B1,P1', help='Comma-separated league codes (e.g., E0,D1,SP1)')
-    parser.add_argument('--rating-range-filter', type=str, help='Comma-separated rating range (lo,hi); skip rating override when rating outside range')
-    parser.add_argument('--ml-mode', type=str, default='off', choices=['off','train','predict'], help='ML mode: off/train/predict')
-    parser.add_argument('--ml-validate', action='store_true', help='Print cross-validation metrics for ML models')
-    parser.add_argument('--ml-algorithms', type=str, default='rf,xgb', help='Comma-separated algorithms to train (rf,xgb)')
-    parser.add_argument('--ml-decay', type=float, default=0.85, help='Recency decay factor for sample weights (0<decay<=1)')
-    parser.add_argument('--ml-min-samples', type=int, default=300, help='Minimum samples required to run ML training')
-    parser.add_argument('--ml-save-models', action='store_true', help='Persist trained ML models to disk')
-    parser.add_argument('--ml-models-dir', type=str, default='models', help='Directory to save ML model pickles')
-    parser.add_argument('--verbose', action='store_true', help='Enable verbose (DEBUG) logging')
-    args = parser.parse_args()
-    # League alias handling
-    leagues_arg = args.leagues
-    if args.league and not leagues_arg:
-        leagues_arg = args.league
-    if args.league and args.league not in leagues_arg.split(','):
-        leagues_arg = args.league  # override for single league usage
-    leagues_to_run = [league.strip() for league in leagues_arg.split(',')]
-    ml_algos_list = [a.strip() for a in args.ml_algorithms.split(',') if a.strip()]
-    main_full_league_multiple(
-        bankroll=args.bankroll,
-        leagues=leagues_to_run,
-        use_parsed_all=args.use_parsed_all,
-        min_confidence=args.min_confidence,
-        risk_profile=args.risk_profile,
-        rating_model=args.rating_model,
-        rating_last_n=args.rating_last_n,
-        min_sample_for_rating=args.min_sample_for_rating,
-        rating_blend_weight=args.rating_blend_weight,
-        rating_range_filter=_parse_range_filter(args.rating_range_filter) if args.rating_range_filter else None,
-        ml_mode=args.ml_mode,
-        ml_validate=args.ml_validate,
-        ml_algorithms=ml_algos_list,
-        ml_decay=args.ml_decay,
-        ml_min_samples=args.ml_min_samples,
-        ml_save_models=args.ml_save_models,
-        ml_models_dir=args.ml_models_dir,
-        input_log=args.input_log or args.league if False else args.input_log  # pass through
-    )
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    if parallel_workers and parallel_workers > 1 and len(leagues) > 1:
+        # Use threads to avoid pickling ML objects; threads can improve throughput for I/O-bound parts.
+        pool = ThreadPool(min(parallel_workers, len(leagues)))
+        pool.map(_process_one, leagues)
+        pool.close()
+        pool.join()
+    else:
+        for league_code in leagues:
+            _process_one(league_code)
 
-# Provide a callable main for external CLI compatibility
+    total_elapsed = time.perf_counter() - start_all
+    logging.info("Per-league timings: " + ', '.join(f"{k}={v:.2f}s" for k,v in league_times.items()))
+    logging.info(f"Total full-league processing time: {total_elapsed:.2f}s")
+
+    return total_elapsed
+
 
 def main(argv=None):
-    if argv is None:
-        argv = []
+    """Entry point compatible with CLI wrapper. Accepts argv (list of args) or uses sys.argv[1:]."""
+    import sys
     parser = argparse.ArgumentParser(description='Football analytics assistant (full league)')
     parser.add_argument('--bankroll', type=float, default=100.0)
     parser.add_argument('--use-parsed-all', action='store_true')
@@ -912,15 +978,44 @@ def main(argv=None):
     parser.add_argument('--ml-min-samples', type=int, default=300)
     parser.add_argument('--ml-save-models', action='store_true')
     parser.add_argument('--ml-models-dir', type=str, default='models')
+    parser.add_argument('--fixtures-date', type=str)
     parser.add_argument('--input-log', type=str)
+    parser.add_argument('--enable-double-chance', action='store_true')
+    parser.add_argument('--dc-min-prob', type=float, default=0.75)
+    parser.add_argument('--dc-secondary-threshold', type=float, default=0.80)
+    parser.add_argument('--dc-allow-multiple', action='store_true')
+    parser.add_argument('--parallel-workers', type=int, default=1, help='Number of worker threads to process leagues in parallel (default 1)')
     parser.add_argument('--verbose', action='store_true')
+
     parsed = parser.parse_args(argv)
-    leagues_arg = parsed.leagues or parsed.league or 'E0'
+
+    leagues_arg = parsed.leagues
     if parsed.league and parsed.league not in leagues_arg.split(','):
         leagues_arg = parsed.league
     leagues_to_run = [l.strip() for l in leagues_arg.split(',') if l.strip()]
     ml_algos_list = [a.strip() for a in parsed.ml_algorithms.split(',') if a.strip()]
-    main_full_league_multiple(
+
+    # Precompute shared ML assets if requested to avoid repeating per-league
+    shared_ml_feature_df = None
+    shared_ml_models = None
+    if parsed.ml_mode in ('train','predict'):
+        history_df_global = load_historical_matches()
+        if not history_df_global.empty and engineer_features is not None:
+            try:
+                shared_ml_feature_df = engineer_features(history_df_global)
+                # optionally train shared models once if enough samples
+                if check_min_samples and check_min_samples(shared_ml_feature_df, parsed.ml_min_samples):
+                    shared_ml_models = train_models(shared_ml_feature_df, weights=(build_recency_weights(shared_ml_feature_df['Date'].values, decay=parsed.ml_decay) if build_recency_weights else None), algorithms=[a.strip() for a in parsed.ml_algorithms.split(',') if a.strip()])
+                    if parsed.ml_save_models:
+                        ts = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+                        try:
+                            save_models(shared_ml_models, os.path.join(parsed.ml_models_dir, f"ml_models_shared_{ts}.pkl"))
+                        except Exception:
+                            logging.warning("Failed to persist shared ML models")
+            except Exception as e:
+                logging.warning(f"Failed to precompute shared ML assets: {e}")
+
+    return main_full_league_multiple(
         bankroll=parsed.bankroll,
         leagues=leagues_to_run,
         use_parsed_all=parsed.use_parsed_all,
@@ -938,7 +1033,15 @@ def main(argv=None):
         ml_min_samples=parsed.ml_min_samples,
         ml_save_models=parsed.ml_save_models,
         ml_models_dir=parsed.ml_models_dir,
-        input_log=parsed.input_log
+        input_log=parsed.input_log,
+        fixtures_date=parsed.fixtures_date,
+        enable_double_chance=parsed.enable_double_chance,
+        dc_min_prob=parsed.dc_min_prob,
+        dc_secondary_threshold=parsed.dc_secondary_threshold,
+        dc_allow_multiple=parsed.dc_allow_multiple,
+        parallel_workers=parsed.parallel_workers,
+        shared_ml_models=shared_ml_models,
+        shared_ml_feature_df=shared_ml_feature_df
     )
-    if parsed.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+
+# End of file

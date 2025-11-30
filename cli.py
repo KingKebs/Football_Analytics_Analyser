@@ -81,6 +81,10 @@ class FootballAnalyticsCLI:
             'analyze_suggestions_results.py',
         ],
         'help': [],
+        # Add converter script requirement for new task
+        'convert-upcoming': [
+            'convert_upcoming_matches.py',
+        ],
     }
 
     def __init__(self):
@@ -154,15 +158,21 @@ class FootballAnalyticsCLI:
             required=True,
             choices=[
                 'full-league', 'single-match', 'download', 'organize',
-                'validate', 'corners', 'analyze-corners', 'view', 'backtest', 'help'
+                'validate', 'corners', 'analyze-corners', 'view', 'backtest', 'help',
+                # New task to run convert_upcoming_matches.py
+                'convert-upcoming',
             ],
             help='Task to execute'
         )
 
         # League and season options
-        parser.add_argument('--league', default='E0', help='League code (E0=EPL, SP1=La Liga, D1=Bundesliga, etc.) [default: E0]')
+        parser.add_argument('--league', default='ALL', help='League code or ALL for all supported leagues [default: ALL]')
         parser.add_argument('--leagues', help='Comma-separated league codes for batch operations (e.g., E0,SP1,D1)')
         parser.add_argument('--season', default='AUTO', help='Season (e.g., 2024-25) or AUTO for latest [default: AUTO]')
+
+        # Converter-specific args
+        parser.add_argument('--output-dir', dest='output_dir', default='data', help='Output directory for convert_upcoming_matches.py [default: data]')
+        parser.add_argument('--date', help='Override date (YYYY-MM-DD) for convert_upcoming_matches.py')
 
         # Match analysis options
         parser.add_argument('--home', help='Home team name (for single match analysis)')
@@ -182,6 +192,17 @@ class FootballAnalyticsCLI:
         parser.add_argument('--fixtures-date', help='Date (YYYYMMDD) for parsed fixtures file')
         parser.add_argument('--min-team-matches', type=int, default=5, help='Minimum historical matches per team for corner prediction')
         parser.add_argument('--save-enriched', action='store_true', help='Save enriched engineered corner feature CSVs')
+
+        # Corner ML flags
+        parser.add_argument('--corners-save-models', action='store_true', help='Persist corner ML models')
+        parser.add_argument('--corners-models-dir', default='models/corners', help='Directory for corner models')
+        parser.add_argument('--corners-rf-n-estimators', type=int, default=300, help='RF trees for corners models')
+        parser.add_argument('--corners-rf-max-depth', type=int, default=None, help='RF max depth (None=unlimited)')
+        parser.add_argument('--corners-cv-folds', type=int, default=5, help='CV folds for corner models')
+        parser.add_argument('--corners-half-life-days', type=int, default=180, help='Recency weighting half-life days')
+        parser.add_argument('--corners-n-jobs', type=int, default=-1, help='Parallel jobs for RF')
+        parser.add_argument('--corners-use-ml-prediction', action='store_true', help='Use ML models for match/fixture corner predictions with ranges')
+        parser.add_argument('--corners-mc-samples', type=int, default=1000, help='Monte Carlo samples for corner ranges')
 
         # Data source options
         parser.add_argument('--file', help='Input file path or filename')
@@ -204,6 +225,13 @@ class FootballAnalyticsCLI:
 
         # General analysis options
         parser.add_argument('--min-confidence', type=float, default=0.6, help='Minimum market probability to surface in suggestions [default: 0.6]')
+        parser.add_argument('--enable-double-chance', action='store_true', help='Enable Double Chance (1X, X2, 12) market suggestions')
+        parser.add_argument('--dc-min-prob', type=float, default=0.75, help='Minimum probability threshold for Double Chance selection [default: 0.75]')
+        parser.add_argument('--dc-secondary-threshold', type=float, default=0.80, help='Secondary threshold for adding DC alongside 1X2 [default: 0.80]')
+        parser.add_argument('--dc-allow-multiple', action='store_true', help='Allow multiple Double Chance picks where applicable')
+
+        # Performance options
+        parser.add_argument('--parallel-workers', type=int, default=1, help='Number of worker threads to process leagues in parallel [default: 1]')
 
         # Validation options
         parser.add_argument('--check-all', action='store_true', help='Validate all data')
@@ -253,6 +281,8 @@ class FootballAnalyticsCLI:
                 return self.task_backtest(args)
             elif args.task == 'help':
                 return self.task_help(args)
+            elif args.task == 'convert-upcoming':
+                return self.task_convert_upcoming(args)
         except Exception as e:
             logger.error(f"Error: {e}", exc_info=True)
             return 1
@@ -277,8 +307,11 @@ class FootballAnalyticsCLI:
                 '--ml-min-samples', str(args.ml_min_samples),
                 '--min-confidence', str(args.min_confidence),
             ]
-            if args.use_parsed_all:
-                argv.append('--use-parsed-all')
+            if args.enable_double_chance:
+                argv.append('--enable-double-chance')
+                argv.extend(['--dc-min-prob', str(args.dc_min_prob), '--dc-secondary-threshold', str(args.dc_secondary_threshold)])
+                if args.dc_allow_multiple:
+                    argv.append('--dc-allow-multiple')
             # Pass input log if provided
             if args.input:
                 argv.extend(['--input-log', args.input])
@@ -288,6 +321,8 @@ class FootballAnalyticsCLI:
             if args.ml_save_models:
                 argv.append('--ml-save-models')
                 argv.extend(['--ml-models-dir', args.ml_models_dir])
+            if hasattr(args, 'parallel_workers') and args.parallel_workers:
+                argv.extend(['--parallel-workers', str(args.parallel_workers)])
             if args.dry_run:
                 argv.append('--dry-run')
             if args.verbose:
@@ -452,17 +487,20 @@ class FootballAnalyticsCLI:
         # 2) Extended corners_analysis.py path (supports new flags)
         import subprocess
         corner_cmd = [sys.executable, 'src/corners_analysis.py']
-        # league selection: if args.leagues then pass combined, else single league
-        if args.leagues:
-            corner_cmd.extend(['--league', args.leagues])
+        # Determine effective league handling; if use-parsed-all, force ALL regardless of provided league(s)
+        if args.use_parsed_all:
+            corner_cmd.extend(['--league', 'ALL'])
         else:
-            corner_cmd.extend(['--league', args.league])
+            effective_league = args.leagues if args.leagues else args.league
+            corner_cmd.extend(['--league', effective_league])
         if args.file:
             corner_cmd.extend(['--file', args.file])
-        if args.home_team:
-            corner_cmd.extend(['--home-team', args.home_team])
-        if args.away_team:
-            corner_cmd.extend(['--away-team', args.away_team])
+        # Skip passing explicit home/away when using parsed fixtures across all leagues
+        if not args.use_parsed_all:
+            if args.home_team:
+                corner_cmd.extend(['--home-team', args.home_team])
+            if args.away_team:
+                corner_cmd.extend(['--away-team', args.away_team])
         if args.top_n and args.top_n > 0:
             corner_cmd.extend(['--top-n', str(args.top_n)])
         if args.train_model:
@@ -474,6 +512,16 @@ class FootballAnalyticsCLI:
             if args.fixtures_date:
                 corner_cmd.extend(['--fixtures-date', args.fixtures_date])
             corner_cmd.extend(['--min-team-matches', str(args.min_team_matches)])
+        # Forward corner ML flags
+        if args.corners_save_models:
+            corner_cmd.append('--corners-save-models')
+            corner_cmd.extend(['--corners-models-dir', args.corners_models_dir])
+        corner_cmd.extend(['--corners-rf-n-estimators', str(args.corners_rf_n_estimators)])
+        if args.corners_rf_max_depth is not None:
+            corner_cmd.extend(['--corners-rf-max-depth', str(args.corners_rf_max_depth)])
+        corner_cmd.extend(['--corners-cv-folds', str(args.corners_cv_folds), '--corners-half-life-days', str(args.corners_half_life_days), '--corners-n-jobs', str(args.corners_n_jobs), '--corners-mc-samples', str(args.corners_mc_samples)])
+        if args.corners_use_ml_prediction:
+            corner_cmd.append('--corners-use-ml-prediction')
         if args.verbose:
             corner_cmd.append('--json-summary')  # show summary when verbose for insight
         logger.info(f"Running corners_analysis.py: {' '.join(corner_cmd)}")
@@ -662,6 +710,20 @@ class FootballAnalyticsCLI:
 
         print(help_text)
         return 0
+
+    def task_convert_upcoming(self, args):
+        """Run src/convert_upcoming_matches.py with provided input/output args."""
+        import subprocess
+
+        input_path = args.input or 'data/raw/upcomingMatches.json'
+        cmd = [sys.executable, 'src/convert_upcoming_matches.py', '--input', input_path, '--output-dir', args.output_dir]
+        if args.date:
+            cmd.extend(['--date', args.date])
+
+        logger.info(f"Running convert_upcoming_matches.py: {' '.join(cmd)}")
+        if args.dry_run:
+            return 0
+        return subprocess.run(cmd, capture_output=False, text=True).returncode
 
 
 def main():
