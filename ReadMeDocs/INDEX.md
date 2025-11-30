@@ -29,11 +29,13 @@ New to this project? **Read this first:**
 
 ### For End Users (Want to analyze football data)
 1. Read: **QUICK_REFERENCE.md** (5 min)
-2. Run: `./test_system.sh` (3 min) - Verify system functionality
-3. Run: `python cli.py --task help` (1 min)
-4. Try: `python cli.py --task full-league --league E0`
-5. Refer to: **FUNCTIONALITY_VERIFICATION.md** for test scripts
-6. Refer back to **QUICK_REFERENCE.md** as needed
+2. **NEW:** Setup automated fixtures: **FIXTURES_DOWNLOAD_GUIDE.md** (10 min)
+3. Run: `./test_system.sh` (3 min) - Verify system functionality
+4. Run: `python cli.py --task help` (1 min)
+5. Try: `python cli.py --task download-fixtures --update-today --dry-run`
+6. Try: `python cli.py --task full-league --league E0`
+7. Refer to: **FUNCTIONALITY_VERIFICATION.md** for test scripts
+8. Refer back to **QUICK_REFERENCE.md** as needed
 
 ### For Developers (Want to understand the architecture)
 1. Read: **DELIVERY_SUMMARY.md** (10 min)
