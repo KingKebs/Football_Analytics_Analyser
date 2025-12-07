@@ -160,7 +160,7 @@ class FootballAnalyticsCLI:
             '--task',
             required=True,
             choices=[
-                'full-league', 'single-match', 'download', 'organize',
+                'full-league', 'single-match', 'download', 'download-fixtures', 'organize',
                 'validate', 'corners', 'analyze-corners', 'view', 'backtest', 'help',
                 # New task to run convert_upcoming_matches.py
                 'convert-upcoming',
@@ -546,6 +546,8 @@ class FootballAnalyticsCLI:
         try:
             from corners_analysis import CornersAnalyzer
             from pathlib import Path
+            import os
+            from datetime import datetime
 
             data_dir = Path('football-data')
             csv_files = list(data_dir.glob('*.csv'))
@@ -557,8 +559,49 @@ class FootballAnalyticsCLI:
             if not args.dry_run:
                 for csv_file in csv_files[:1]:  # Analyze first by default
                     logger.info(f"Analyzing {csv_file.name}")
-                    analyzer = CornersAnalyzer(str(csv_file))
-                    analyzer.run_full_analysis()
+                    analyzer = CornersAnalyzer(
+                        str(csv_file),
+                        rf_params={
+                            'n_estimators': args.corners_rf_n_estimators,
+                            'random_state': 42,
+                            'n_jobs': args.corners_n_jobs,
+                            'max_depth': args.corners_rf_max_depth
+                        },
+                        cv_folds=args.corners_cv_folds,
+                        half_life_days=args.corners_half_life_days,
+                        mc_samples=args.corners_mc_samples
+                    )
+
+                    # Execute the proper workflow
+                    if analyzer.load_data() is None:
+                        logger.warning(f"Failed to load data from {csv_file.name}")
+                        continue
+
+                    if not analyzer.validate_corners_data():
+                        logger.warning(f"Invalid corners data in {csv_file.name}")
+                        continue
+
+                    analyzer.clean_features()
+                    analyzer.engineer_features()
+                    analyzer.estimate_half_split()
+                    analyzer.calculate_correlations()
+                    analyzer.calculate_team_stats()
+
+                    if args.train_model:
+                        metrics = analyzer.train_models(
+                            save_models=args.corners_save_models,
+                            models_dir=args.corners_models_dir
+                        )
+                        logger.info(f"Model metrics: {metrics}")
+
+                    if args.save_enriched:
+                        out_dir = args.output_dir or 'data/corners'
+                        os.makedirs(out_dir, exist_ok=True)
+                        enriched_path = os.path.join(out_dir, f'enriched_{csv_file.stem}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv')
+                        analyzer.enriched_df.to_csv(enriched_path, index=False)
+                        logger.info(f"Enriched feature set saved: {enriched_path}")
+
+                    logger.info(f"✓ Analysis complete for {csv_file.name}")
 
             logger.info(f"✓ Analyzed {len(csv_files)} files")
             return 0
@@ -737,9 +780,24 @@ class FootballAnalyticsCLI:
     def task_convert_upcoming(self, args):
         """Run src/convert_upcoming_matches.py with provided input/output args."""
         import subprocess
+        from datetime import datetime
 
         input_path = args.input or 'data/raw/upcomingMatches.json'
-        cmd = [sys.executable, 'src/convert_upcoming_matches.py', '--input', input_path, '--output-dir', args.output_dir]
+
+        # Ensure the output directory exists
+        if not os.path.isdir(args.output_dir):
+            os.makedirs(args.output_dir, exist_ok=True)
+
+        # Pass the output directory to the script (not a specific file)
+        cmd = [
+            sys.executable,
+            "src/convert_upcoming_matches.py",
+            "--input",
+            input_path,
+            "--output-dir",
+            args.output_dir,
+        ]
+
         if args.date:
             cmd.extend(['--date', args.date])
 

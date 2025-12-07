@@ -284,18 +284,28 @@ def load_parsed_fixtures(date_str: str = None, data_dir: str = DATA_DIR) -> pd.D
     """Load parsed fixtures from data/todays_fixtures_*.csv|json produced by parse_match_log.py"""
     if date_str is None:
         date_str = datetime.now().strftime('%Y%m%d')
-    csv_path = os.path.join(data_dir, f"todays_fixtures_{date_str}.csv")
-    json_path = os.path.join(data_dir, f"todays_fixtures_{date_str}.json")
 
+    # Search in multiple directories: data/, data/analysis/
+    search_dirs = [data_dir, os.path.join(data_dir, 'analysis')]
     candidates = []
-    if os.path.exists(csv_path):
-        candidates.append(csv_path)
-    if os.path.exists(json_path):
-        candidates.append(json_path)
+
+    for search_dir in search_dirs:
+        csv_path = os.path.join(search_dir, f"todays_fixtures_{date_str}.csv")
+        json_path = os.path.join(search_dir, f"todays_fixtures_{date_str}.json")
+        if os.path.exists(csv_path):
+            candidates.append(csv_path)
+        if os.path.exists(json_path):
+            candidates.append(json_path)
+
     if not candidates:
-        all_files = sorted(glob.glob(os.path.join(data_dir, 'todays_fixtures_*.csv')) + glob.glob(os.path.join(data_dir, 'todays_fixtures_*.json')), key=lambda p: os.path.getmtime(p), reverse=True)
-        if all_files:
-            candidates.append(all_files[0])
+        # Fallback: search all directories for any fixtures files
+        for search_dir in search_dirs:
+            if os.path.isdir(search_dir):
+                all_files = sorted(glob.glob(os.path.join(search_dir, 'todays_fixtures_*.csv')) +
+                                 glob.glob(os.path.join(search_dir, 'todays_fixtures_*.json')),
+                                 key=lambda p: os.path.getmtime(p), reverse=True)
+                if all_files:
+                    candidates.extend(all_files[:1])  # Take most recent from each dir
 
     if not candidates:
         return pd.DataFrame()
@@ -956,6 +966,24 @@ def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None
     return total_elapsed
 
 
+def extract_leagues_from_parsed_fixtures(fixtures_date: str = None, data_dir: str = DATA_DIR) -> List[str]:
+    """Extract unique league codes from parsed fixtures file efficiently."""
+    try:
+        parsed_fixtures = load_parsed_fixtures(date_str=fixtures_date, data_dir=data_dir)
+        if parsed_fixtures.empty:
+            return []
+
+        # Extract unique leagues efficiently
+        leagues = parsed_fixtures['League'].dropna().str.strip()
+        unique_leagues = sorted([l for l in leagues.unique() if l])
+
+        logging.info(f"Extracted {len(unique_leagues)} leagues from parsed fixtures: {','.join(unique_leagues)}")
+        return unique_leagues
+    except Exception as e:
+        logging.warning(f"Failed to extract leagues from parsed fixtures: {e}")
+        return []
+
+
 def main(argv=None):
     """Entry point compatible with CLI wrapper. Accepts argv (list of args) or uses sys.argv[1:]."""
     import sys
@@ -993,6 +1021,17 @@ def main(argv=None):
     if parsed.league and parsed.league not in leagues_arg.split(','):
         leagues_arg = parsed.league
     leagues_to_run = [l.strip() for l in leagues_arg.split(',') if l.strip()]
+
+    # Dynamic league extraction when using parsed fixtures with 'ALL'
+    if parsed.use_parsed_all and leagues_to_run == ['ALL']:
+        extracted_leagues = extract_leagues_from_parsed_fixtures(fixtures_date=parsed.fixtures_date)
+        if extracted_leagues:
+            leagues_to_run = extracted_leagues
+            logging.info(f"Dynamically using leagues from parsed fixtures: {','.join(leagues_to_run)}")
+        else:
+            logging.warning("No leagues found in parsed fixtures, falling back to default")
+            leagues_to_run = ['E0']
+
     ml_algos_list = [a.strip() for a in parsed.ml_algorithms.split(',') if a.strip()]
 
     # Precompute shared ML assets if requested to avoid repeating per-league

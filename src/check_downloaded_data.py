@@ -17,8 +17,8 @@ def check_downloaded_data(league_code: str) -> Dict[str, object]:
     Check whether league CSV and fixtures CSV are present under `EURO_FOOTBALL_DIR`.
     Returns a dict with existence, filesize and mtime (ISO) for each checked file.
     """
-    league_csv = os.path.join(EURO_FOOTBALL_DIR, f"{league_code}.csv")
-    fixtures_csv = os.path.join(EURO_FOOTBALL_DIR, f"{league_code}_fixtures.csv")
+    league_csv = os.path.join(EURO_FOOTBALL_DIR, "{}.csv".format(league_code))
+    fixtures_csv = os.path.join(EURO_FOOTBALL_DIR, "{}_fixtures.csv".format(league_code))
 
     def info(path):
         if os.path.exists(path):
@@ -40,9 +40,9 @@ def load_league_table(league_code: str) -> pd.DataFrame:
     This helper is defensive: if the league file contains HomeTeam/AwayTeam columns
     it will extract unique team names.
     """
-    path = os.path.join(EURO_FOOTBALL_DIR, f"{league_code}.csv")
+    path = os.path.join(EURO_FOOTBALL_DIR, "{}.csv".format(league_code))
     if not os.path.exists(path):
-        raise FileNotFoundError(f"League file not found: {path}")
+        raise FileNotFoundError("League file not found: {}".format(path))
     df = pd.read_csv(path)
     if "Team" in df.columns:
         return df
@@ -60,7 +60,7 @@ def get_next_fixtures(league_code: str, lookahead_days: int = 14, max_matches: i
     return matches within `lookahead_days`. Otherwise simulate a next round from the league table.
     Returns a DataFrame with columns Date, HomeTeam, AwayTeam (Date is pandas.Timestamp).
     """
-    fixtures_path = os.path.join(EURO_FOOTBALL_DIR, f"{league_code}_fixtures.csv")
+    fixtures_path = os.path.join(EURO_FOOTBALL_DIR, "{}_fixtures.csv".format(league_code))
     now_ts = pd.Timestamp.now(tz="UTC")
     if os.path.exists(fixtures_path):
         try:
@@ -72,7 +72,7 @@ def get_next_fixtures(league_code: str, lookahead_days: int = 14, max_matches: i
             home_col = cols.get("hometeam") or cols.get("home") or None
             away_col = cols.get("awayteam") or cols.get("away") or None
             if date_col is None or home_col is None or away_col is None:
-                logging.warning(f"Fixtures file missing required columns: {fixtures_path}")
+                logging.warning("Fixtures file missing required columns: {}".format(fixtures_path))
                 return pd.DataFrame(columns=["Date", "HomeTeam", "AwayTeam"])
             df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
             # Filter upcoming between now and lookahead window
@@ -82,14 +82,14 @@ def get_next_fixtures(league_code: str, lookahead_days: int = 14, max_matches: i
             upcoming = upcoming.rename(columns={date_col: "Date", home_col: "HomeTeam", away_col: "AwayTeam"})
             return upcoming[["Date", "HomeTeam", "AwayTeam"]].head(max_matches).reset_index(drop=True)
         except Exception as e:
-            logging.error(f"Failed to load fixtures file {fixtures_path}: {e}")
+            logging.error("Failed to load fixtures file {}: {}".format(fixtures_path, e))
             return pd.DataFrame(columns=["Date", "HomeTeam", "AwayTeam"])
     # Fallback: simulate pairings from league table
     try:
         league_df = load_league_table(league_code)
         teams = list(league_df["Team"].astype(str))
     except Exception:
-        logging.warning(f"Could not load league table for simulation: {league_code}")
+        logging.warning("Could not load league table for simulation: {}".format(league_code))
         return pd.DataFrame(columns=["Date", "HomeTeam", "AwayTeam"])
     if len(teams) % 2 != 0:
         teams.append("BYE")
@@ -102,16 +102,22 @@ def get_next_fixtures(league_code: str, lookahead_days: int = 14, max_matches: i
     return pd.DataFrame(fixtures)
 
 
-if __name__ == "__main__":
-    # Example usage: allow optional league code from argv
+def main():
+    """
+    Entry point for validation or CLI usage. Allows optional league code from argv.
+    """
+    import sys
     league = sys.argv[1] if len(sys.argv) > 1 else "E0"
     status = check_downloaded_data(league)
-    print(f"League CSV present: {status['league_csv']['exists']}, Fixtures CSV present: {status['fixtures_csv']['exists']}")
+    print("League CSV present: {}, Fixtures CSV present: {}".format(status['league_csv']['exists'], status['fixtures_csv']['exists']))
     next_matches = get_next_fixtures(league, lookahead_days=14, max_matches=10)
     if next_matches.empty:
-        print(f"No upcoming fixtures found for {league} (check '{EURO_FOOTBALL_DIR}').")
+        print("No upcoming fixtures found for {} (check '{}').format(league, EURO_FOOTBALL_DIR)")
     else:
-        print(f"Upcoming matches for {league}:")
+        print("Upcoming matches for {}:".format(league))
         for i, r in next_matches.iterrows():
             date_str = r["Date"].strftime("%Y-%m-%d") if not pd.isna(r["Date"]) else "TBA"
-            print(f" Match {i+1}: {r['HomeTeam']} v {r['AwayTeam']} on {date_str}")
+            print(" Match {}: {} v {} on {}".format(i+1, r['HomeTeam'], r['AwayTeam'], date_str))
+
+if __name__ == "__main__":
+    main()

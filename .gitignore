@@ -43,37 +43,13 @@ football-data/all-euro-football/*.csv
 football-data/*.zip
 
 # Project runtime outputs (data)
-# Keep documented samples, ignore generated artifacts
-data/analysis_results_*.json
-data/full_league_suggestions_*.json
-data/parsed_fixtures_suggestions_*.json
-data/suggestion_*.json
-data/todays_fixtures_*.csv
-data/todays_fixtures_*.json
-data/home_away_team_strengths*.csv
-data/league_data_*.csv
-data/pickMatch_*.csv
-data/bet_history.csv
-data/last_teams.json
-data/*.log
+data/
 
-# Generated analysis and corner model outputs
-data/analysis/full_league_suggestions_*.json
-data/analysis/todays_fixtures_*.json
-data/corners/model_metrics_*.json
-data/corners/batch_predictions_*.json
-data/corners/parsed_corners_predictions_*.json
-data/temp/
-
+# Allow sample result CSVs used in docs
 # Profiling outputs
 profile.out
 *.prof
 
-# Allow sample result CSVs used in docs
-!data/sample_results_*.csv
-
-# Temp and scratch
-.tmp/
 tmp/
 tmp/**
 

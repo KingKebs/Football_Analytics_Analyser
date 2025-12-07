@@ -30,6 +30,27 @@ def _load_json(path: str):
     with open(path, 'r') as f:
         return json.load(f)
 
+@st.cache_data(ttl=120)
+def load_latest_parsed_corners():
+    corners_dir = 'data/corners'
+    paths = sorted(glob.glob(os.path.join(corners_dir, 'parsed_corners_predictions_*.json')))
+    if not paths:
+        return None, None
+    latest = paths[-1]
+    return _load_json(latest), latest
+
+# Helper to display dataframes with a stretch/content toggle
+def show_dataframe(df, stretch: bool = True, fallback_width: int = 800):
+    """Render a dataframe using use_container_width when available, else fallback to fixed width."""
+    if stretch:
+        try:
+            st.dataframe(df, use_container_width=True)
+            return
+        except TypeError:
+            # older streamlit versions may not accept use_container_width on dataframe
+            pass
+    st.dataframe(df, width=fallback_width)
+
 # Inject light CSS for card-like visuals
 SPORTS_CSS = """
 <style>
@@ -60,12 +81,49 @@ sns.set_palette("husl")
 
 
 def load_latest_full_league_data():
-    """Load the most recent full league suggestions data."""
-    data_dir = 'data'
-    paths = sorted(glob.glob(os.path.join(data_dir, 'full_league_suggestions_*.json')))
-    if not paths:
-        return None
-    return _load_json(paths[-1])
+    """Load all recent full league suggestions data from the same analysis run."""
+    data_dir = 'data/analysis'
+    candidates = glob.glob(os.path.join(data_dir, 'full_league_suggestions_*.json'))
+    if not candidates:
+        return None, None
+
+    # Get the most recent file to determine the base timestamp (date + hour-minute)
+    latest_file = max(candidates, key=os.path.getmtime)
+    full_timestamp = os.path.basename(latest_file).split('_')[-1].replace('.json', '')
+
+    # Extract date and hour-minute from timestamp
+    # Example: 065856 -> use 0658 to match 065840, 065843, 065847, 065850, 065853, 065856
+    if len(full_timestamp) >= 4:  # Format: HHMMSS
+        base_time = full_timestamp[:4]  # HHMM (first 4 chars)
+    else:
+        base_time = full_timestamp
+
+    # Get the date part from the filename (YYYYMMDD)
+    filename_parts = os.path.basename(latest_file).split('_')
+    if len(filename_parts) >= 4:
+        date_part = filename_parts[-2]  # Should be 20251206
+        base_pattern = f"{date_part}_{base_time}"  # 20251206_0658
+    else:
+        base_pattern = base_time
+
+    # Find all files from the same analysis run (same date and hour-minute)
+    same_run_files = [f for f in candidates if base_pattern in os.path.basename(f)]
+
+    # Load all files from the same run
+    all_data = []
+    all_paths = []
+    for file_path in sorted(same_run_files):
+        data = _load_json(file_path)
+        if data:
+            # Add league info to the data
+            league_code = os.path.basename(file_path).split('_')[3]  # Extract league from filename
+            if isinstance(data, dict):
+                data['league_code'] = league_code
+                data['file_path'] = file_path
+            all_data.append(data)
+            all_paths.append(file_path)
+
+    return all_data, all_paths
 
 
 def load_latest_corner_predictions_data():
@@ -294,10 +352,10 @@ def create_xg_comparison_plot(suggestions):
 
 
 def main():
-    st.title("⚽ Football Analytics Dashboard")
+    st.title("H⚽VA  Football Analytics Dashboard")
 
     # Load data
-    full_league_data = load_latest_full_league_data()
+    full_league_data_list, full_league_paths = load_latest_full_league_data()
     correlations, team_stats, corners_df = load_latest_corners_data()
     corner_predictions = load_latest_corner_predictions_data()
 
@@ -307,89 +365,208 @@ def main():
         "Choose a view",
         ["Full League Suggestions", "Corner Analysis", "Corner Predictions", "Live Corner Predictor"]
     )
+    # Toggle to control whether charts/dataframes stretch to the container width (width='stretch')
+    stretch_charts = st.sidebar.checkbox("Stretch charts/tables to container width (width='stretch')", value=True)
 
     if app_mode == "Full League Suggestions":
         st.header("Full League Match & Parlay Suggestions")
-        if not full_league_data:
-            st.warning("No full league suggestion files found in `data/`.")
+        if not full_league_data_list:
+            st.warning("No full league suggestion files found in `data/analysis/`")
             st.info("Run the league analysis pipeline to generate suggestions.")
         else:
-            # Display source info
-            latest_path = sorted(glob.glob(os.path.join('data','full_league_suggestions_*.json')))[-1]
-            ts = os.path.basename(latest_path).split('_')[-1].replace('.json','')
-            st.caption(f"Latest file: {latest_path} ")
-            st.markdown(f"Generated: <span class='s-badge'>{ts}</span>", unsafe_allow_html=True)
-            suggestions = full_league_data.get('suggestions', []) if isinstance(full_league_data, dict) else []
-            parlays = full_league_data.get('favorable_parlays', []) if isinstance(full_league_data, dict) else []
+            # Display source info for all files from the same run
+            if full_league_paths:
+                latest_path = full_league_paths[0]
+                ts = os.path.basename(latest_path).split('_')[-1].replace('.json','')
+                league_codes = [data.get('league_code', 'Unknown') for data in full_league_data_list if isinstance(data, dict)]
+
+                st.caption(f"Analysis run: {ts} | Leagues: {', '.join(league_codes)} | Files: {len(full_league_paths)}")
+                with st.expander("📁 View all files"):
+                    for path in full_league_paths:
+                        st.text(f"• {path}")
+
+            # Combine all suggestions from all leagues
+            all_suggestions = []
+            all_parlays = []
+            for data in full_league_data_list:
+                if isinstance(data, dict):
+                    league_code = data.get('league_code', 'Unknown')
+                    suggestions = data.get('suggestions', [])
+                    parlays = data.get('favorable_parlays', [])
+
+                    # Add league info to each suggestion
+                    for suggestion in suggestions:
+                        suggestion['league'] = league_code
+                    all_suggestions.extend(suggestions)
+
+                    # Add league info to each parlay
+                    for parlay in parlays:
+                        parlay['league'] = league_code
+                    all_parlays.extend(parlays)
 
             # Quick filters
-            fcol1, fcol2 = st.columns([2,1])
+            fcol1, fcol2, fcol3 = st.columns([2,1,1])
             with fcol1:
                 team_filter = st.text_input("Filter by team name", "").strip().lower()
             with fcol2:
                 prob_cut = st.slider("Min pick probability % (for display)", 0, 100, 55)
+            with fcol3:
+                # League filter
+                available_leagues = list(set([s.get('league', 'Unknown') for s in all_suggestions]))
+                league_filter = st.selectbox("Filter by league", ['All'] + available_leagues)
 
-            # Optional xG comparison plot
-            if suggestions:
-                xg_fig = create_xg_comparison_plot(suggestions)
-                if xg_fig:
-                    st.pyplot(xg_fig)
+            st.subheader(f"📋 Match Suggestions ({len(all_suggestions)} matches from {len(league_codes)} leagues)")
 
-            st.subheader("📋 Match Details")
-            # Render grid (2 columns) of match cards
-            for i in range(0, len(suggestions), 2):
-                cols = st.columns(2)
-                for j in range(2):
-                    if i + j >= len(suggestions):
-                        break
-                    s = suggestions[i + j]
-                    home = s.get('home',''); away = s.get('away','')
+            # Build dataframe for line-by-line display
+            if all_suggestions:
+                rows = []
+                for s in all_suggestions:
+                    home = s.get('home', '')
+                    away = s.get('away', '')
+                    league = s.get('league', 'Unknown')
+
+                    # Apply team filter
                     if team_filter and (team_filter not in home.lower() and team_filter not in away.lower()):
                         continue
-                    with cols[j]:
-                        with st.container():
-                            st.markdown("<div class='s-card'>", unsafe_allow_html=True)
-                            st.markdown(f"**{home}** vs **{away}**")
-                            mcol1, mcol2, mcol3 = st.columns(3)
-                            mcol1.metric("Home xG", f"{s.get('xg_home',0):.2f}")
-                            mcol2.metric("Away xG", f"{s.get('xg_away',0):.2f}")
-                            picks = s.get('picks', [])
-                            # Show top pick over threshold
-                            top_pick = None
-                            if picks:
-                                top_pick = max(picks, key=lambda p: p.get('prob',0))
-                            if top_pick and (top_pick.get('prob',0)*100) >= prob_cut:
-                                mcol3.metric(f"Top {top_pick['market']}", f"{top_pick['selection']}", delta=f"{top_pick['prob']*100:.1f}%")
-                            else:
-                                mcol3.metric("Top Pick", "—")
-                            # ML snippet if present
-                            mp = s.get('ml_prediction') or {}
-                            if mp:
-                                st.caption(f"ML TG: {mp.get('pred_total_goals',0):.2f} | 1X2 H={mp.get('prob_1x2_home',0):.2f} D={mp.get('prob_1x2_draw',0):.2f} A={mp.get('prob_1x2_away',0):.2f}")
-                            st.markdown("</div>", unsafe_allow_html=True)
 
-            # Parlay Analysis
-            if parlays:
-                st.subheader("🎰 Favorable Parlays")
-                for i, parlay in enumerate(parlays):
-                    with st.expander(f"Parlay {i+1}: {parlay.get('size','?')} legs"):
-                        st.write(f"**Probability:** {parlay.get('probability',0)*100:.1f}%")
-                        st.write(f"**Decimal Odds:** {parlay.get('decimal_odds',0):.2f}")
-                        st.write(f"**Stake Suggestion:** {parlay.get('stake_suggestion','-')}")
-                        st.write(f"**Potential Return:** {parlay.get('potential_return','-')}")
-                        legs = parlay.get('legs', [])
-                        st.write(f"**Legs:** {', '.join(legs) if legs else '-'}")
+                    # Apply league filter
+                    if league_filter != 'All' and league != league_filter:
+                        continue
+
+                    picks = s.get('picks', [])
+                    top_pick = None
+                    if picks:
+                        top_pick = max(picks, key=lambda p: p.get('prob', 0))
+
+                    # Get ML prediction if available
+                    mp = s.get('ml_prediction') or {}
+
+                    # Get corner info
+                    cc = s.get('corners_cards', {})
+
+                    row = {
+                        'League': league,
+                        'Match': f"{home} vs {away}",
+                        'Home xG': f"{s.get('xg_home', 0):.2f}",
+                        'Away xG': f"{s.get('xg_away', 0):.2f}",
+                        'Top Pick': f"{top_pick['selection']} ({top_pick.get('prob', 0)*100:.1f}%)" if top_pick and (top_pick.get('prob', 0)*100) >= prob_cut else "—",
+                        'Market': top_pick.get('market', '—') if top_pick else "—",
+                        'Total Corners': f"{cc.get('TotalCorners', 0):.1f}",
+                        'Home Corners': f"{cc.get('HomeCorners', 0):.1f}",
+                        'Away Corners': f"{cc.get('AwayCorners', 0):.1f}",
+                        'Est. Cards': f"{cc.get('EstimatedCards', 0):.1f}",
+                    }
+                    rows.append(row)
+
+                if rows:
+                    df_suggestions = pd.DataFrame(rows)
+                    show_dataframe(df_suggestions, stretch=stretch_charts)
+                else:
+                    st.info("No suggestions match your filters.")
+            else:
+                st.info("No suggestions available.")
+
+            # Display Parlay Suggestions
+            st.subheader(f"🎰 Favorable Parlays ({len(all_parlays)} parlays from all leagues)")
+            if all_parlays:
+                # Filter parlays by league if selected
+                filtered_parlays = all_parlays
+                if league_filter != 'All':
+                    filtered_parlays = [p for p in all_parlays if p.get('league') == league_filter]
+
+                if filtered_parlays:
+                    for i, parlay in enumerate(filtered_parlays):
+                        with st.expander(f"Parlay {i+1} ({parlay.get('league', 'Unknown')}) - {parlay.get('legs', 0)} legs, {parlay.get('combined_prob', 0)*100:.1f}% prob"):
+                            col1, col2 = st.columns([2, 1])
+                            with col1:
+                                legs = parlay.get('selections', [])
+                                for j, leg in enumerate(legs):
+                                    match = leg.get('match', 'Unknown match')
+                                    selection = leg.get('selection', 'Unknown')
+                                    prob = leg.get('prob', 0) * 100
+                                    st.write(f"**Leg {j+1}:** {match} - {selection} ({prob:.1f}%)")
+                            with col2:
+                                st.metric("Combined Probability", f"{parlay.get('combined_prob', 0)*100:.1f}%")
+                                if 'combined_odds' in parlay:
+                                    st.metric("Combined Odds", f"{parlay.get('combined_odds', 0):.2f}")
+                                if 'expected_return' in parlay:
+                                    st.metric("Expected Return", f"${parlay.get('expected_return', 0):.2f}")
+                else:
+                    st.info("No parlays match your league filter.")
+            else:
+                st.info("No favorable parlays found.")
 
     elif app_mode == "Corner Predictions":
-        st.header("Corner Predictions from Match Log")
-        if not corner_predictions:
-            st.warning("No corner prediction files found in `data/corners/`.")
-            st.info("Run `automate_corner_predictions.py` with a match log to generate predictions.")
-        else:
+        st.header("Corner Predictions")
+
+        # Check for parsed fixture corner predictions first (newest format)
+        parsed_data, parsed_path = load_latest_parsed_corners()
+
+        if parsed_data:
+            st.subheader("📊 Parsed Fixture Corner Predictions (Dynamic League Detection)")
+            st.caption(f"Latest file: {parsed_path}")
+
+            preds = parsed_data.get('predictions', [])
+            skipped = parsed_data.get('skipped', [])
+
+            st.info(f"✅ {len(preds)} predictions generated, {len(skipped)} matches skipped")
+
+            if preds:
+                # League selector
+                leagues_in_preds = list(set([p.get('league_code') for p in preds]))
+                selected_leagues = st.multiselect("Filter by leagues", leagues_in_preds, default=leagues_in_preds)
+
+                # Filter predictions
+                filtered_preds = [p for p in preds if p.get('league_code') in selected_leagues]
+
+                # Build dataframe of key metrics
+                rows = []
+                for p in filtered_preds:
+                    rng = p.get('pred_total_corners_range') or [None, None]
+                    rows.append({
+                        'League': p.get('league_code'),
+                        'Match': f"{p.get('home_team')} vs {p.get('away_team')}",
+                        'ExpHome': f"{p.get('expected_home_corners', 0):.1f}",
+                        'ExpAway': f"{p.get('expected_away_corners', 0):.1f}",
+                        'TotalMean': f"{p.get('pred_total_corners_mean', 0):.1f}",
+                        'Range': f"{rng[0]:.1f}-{rng[1]:.1f}" if rng[0] and rng[1] else "N/A",
+                        '1H%': f"{p.get('pred_1h_ratio_mean', 0)*100:.0f}%",
+                        '1H Corners': f"{p.get('pred_1h_corners_mean', 0):.1f}",
+                        '2H Corners': f"{p.get('pred_2h_corners_mean', 0):.1f}",
+                        'ML Used': "✅" if p.get('ml_used', False) else "❌"
+                    })
+
+                if rows:
+                    df_parsed = pd.DataFrame(rows)
+                    # Sort by league then total mean desc
+                    df_parsed = df_parsed.sort_values(['League','TotalMean'], ascending=[True, False])
+                    show_dataframe(df_parsed, stretch=stretch_charts)
+
+                    # Show skipped matches summary
+                    if skipped:
+                        with st.expander(f"⚠️ {len(skipped)} matches skipped"):
+                            skip_reasons = {}
+                            for s in skipped:
+                                reason = s.get('reason', 'unknown')
+                                skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+
+                            for reason, count in skip_reasons.items():
+                                st.write(f"• {reason}: {count} matches")
+                else:
+                    st.info("No predictions match your league filter.")
+            else:
+                st.warning("No predictions found in the parsed file.")
+
+        # Fallback to old batch predictions if no parsed data
+        elif corner_predictions:
+            st.subheader("📋 Legacy Corner Predictions")
+            st.info("Showing older batch prediction format")
+
             # Display source info
             c_paths = sorted(glob.glob(os.path.join('data/corners','batch_predictions_*.json')))
             if c_paths:
                 st.caption(f"Latest file: {c_paths[-1]}")
+
             # Support both legacy list and new dict structure
             if isinstance(corner_predictions, list):
                 leagues_map = {'ALL': corner_predictions}
@@ -438,6 +615,9 @@ def main():
                                         rec = line.get('recommendation')
                                         if rec:
                                             st.info(f"1H {line.get('line','?')}: {rec} (Over {line.get('p_over', 0)*100:.1f}%)")
+        else:
+            st.warning("No corner prediction files found in `data/corners/`.")
+            st.info("Run corner analysis with `--use-parsed-all` to generate predictions.")
 
     elif app_mode == "Corner Analysis":
         st.header("Corner Analysis Deep Dive")
@@ -448,13 +628,19 @@ def main():
             st.subheader(f"Analysis for: {league_name}")
 
             # Correlation plot
-            st.pyplot(create_correlation_plot(correlations.get('correlations', {}), league_name))
+            corr_fig = create_correlation_plot(correlations.get('correlations', {}), league_name)
+            if corr_fig:
+                st.pyplot(corr_fig, use_container_width=stretch_charts)
 
             # Team stats plot
-            st.pyplot(create_team_stats_plot(team_stats))
+            team_fig = create_team_stats_plot(team_stats)
+            if team_fig:
+                st.pyplot(team_fig, use_container_width=stretch_charts)
 
             # Distribution plots
-            st.pyplot(create_distribution_plots(corners_df, league_name))
+            dist_fig = create_distribution_plots(corners_df, league_name)
+            if dist_fig:
+                st.pyplot(dist_fig, use_container_width=stretch_charts)
 
     elif app_mode == "Live Corner Predictor":
         st.header("Live Corner Predictor")
@@ -498,11 +684,11 @@ def main():
 
                         st.subheader("Market Lines (Total Corners)")
                         lines_df = pd.DataFrame(prediction['total_lines'])
-                        st.dataframe(lines_df)
+                        show_dataframe(lines_df, stretch_charts)
 
                         st.subheader("Market Lines (1H Corners)")
                         half_lines_df = pd.DataFrame(prediction['half_lines'])
-                        st.dataframe(half_lines_df)
+                        show_dataframe(half_lines_df, stretch_charts)
 
     # Footer
     st.markdown("---")
