@@ -1,70 +1,47 @@
 {
-  "ENGLAND": {
-    "Premier League": {
-      "Standings": true,
-      "Matches": [
-        { "time": "14:30", "home": "Aston Villa", "away": "Arsenal" },
-        { "time": "17:00", "home": "Bournemouth", "away": "Chelsea" },
-        { "time": "17:00", "home": "Everton", "away": "Nottingham" },
-        { "time": "17:00", "home": "Manchester City", "away": "Sunderland" },
-        { "time": "17:00", "home": "Newcastle", "away": "Burnley" },
-        { "time": "17:00", "home": "Tottenham", "away": "Brentford" },
-        { "time": "19:30", "home": "Leeds", "away": "Liverpool" }
+  "England": {
+    "Championship": {
+      "Standings": [],
+      "Fixtures": [
+        { "time": "21:45", "home": "Blackburn", "away": "Oxford Utd" },
+        { "time": "21:45", "home": "Charlton", "away": "Middlesbrough" },
+        { "time": "21:45", "home": "Preston", "away": "Coventry" },
+        { "time": "21:45", "home": "Sheffield Utd", "away": "Norwich" },
+        { "time": "21:45", "home": "Southampton", "away": "West Brom" },
+        { "time": "21:45", "home": "Swansea", "away": "Portsmouth" },
+        { "time": "21:45", "home": "Watford", "away": "Sheffield Wed" },
+        { "time": "22:00", "home": "QPR", "away": "Birmingham" }
       ]
-    }
-  },
-  "FRANCE": {
-    "Ligue 1": {
-      "Live Standings": true,
-      "Matches": [
-        { "time": "18:00", "home": "Nantes", "away": "Lens" },
-        { "time": "20:00", "home": "Toulouse", "away": "Strasbourg" },
-        { "time": "22:05", "home": "PSG", "away": "Rennes" }
+    },
+
+    "League One": {
+      "Standings": [],
+      "Fixtures": [
+        { "time": "21:45", "home": "Doncaster", "away": "Stockport County" },
+        { "time": "21:45", "home": "Exeter", "away": "AFC Wimbledon" },
+        { "time": "21:45", "home": "Leyton Orient", "away": "Luton" },
+        { "time": "21:45", "home": "Lincoln", "away": "Barnsley" },
+        { "time": "21:45", "home": "Mansfield", "away": "Bolton" },
+        { "time": "21:45", "home": "Northampton", "away": "Huddersfield" },
+        { "time": "21:45", "home": "Port Vale", "away": "Bradford City" },
+        { "time": "21:45", "home": "Stevenage", "away": "Cardiff" },
+        { "time": "21:45", "home": "Wycombe", "away": "Plymouth" },
+        { "time": "22:00", "home": "Reading", "away": "Peterborough" }
       ]
-    }
-  },
-  "GERMANY": {
-    "Bundesliga": {
-      "Standings": true,
-      "Matches": [
-        { "time": "16:30", "home": "Augsburg", "away": "Bayer Leverkusen" },
-        { "time": "16:30", "home": "FC Koln", "away": "St. Pauli" },
-        { "time": "16:30", "home": "Heidenheim", "away": "Freiburg" },
-        { "time": "16:30", "home": "Stuttgart", "away": "Bayern Munich" },
-        { "time": "16:30", "home": "Wolfsburg", "away": "Union Berlin" },
-        { "time": "19:30", "home": "RB Leipzig", "away": "Eintracht Frankfurt" }
-      ]
-    }
-  },
-  "ITALY": {
-    "Serie A": {
-      "Standings": true,
-      "Matches": [
-        { "time": "16:00", "home": "Sassuolo", "away": "Fiorentina" },
-        { "time": "19:00", "home": "Inter", "away": "Como" },
-        { "time": "21:45", "home": "Verona", "away": "Atalanta" }
-      ]
-    }
-  },
-  "NETHERLANDS": {
-    "Eredivisie": {
-      "Live Standings": true,
-      "Matches": [
-        { "time": "17:30", "home": "Heerenveen", "away": "PSV" },
-        { "time": "19:45", "home": "Sittard", "away": "Ajax" },
-        { "time": "21:00", "home": "Heracles", "away": "Telstar" },
-        { "time": "22:00", "home": "Feyenoord", "away": "Zwolle" }
-      ]
-    }
-  },
-  "SPAIN": {
-    "LaLiga": {
-      "Standings": true,
-      "Matches": [
-        { "time": "15:00", "home": "Villarreal", "away": "Getafe" },
-        { "time": "17:15", "home": "Alaves", "away": "Real Sociedad" },
-        { "time": "19:30", "home": "Betis", "away": "Barcelona" },
-        { "time": "22:00", "home": "Ath Bilbao", "away": "Atl. Madrid" }
+    },
+
+    "League Two": {
+      "Standings": [],
+      "Fixtures": [
+        { "time": "21:45", "home": "Barnet", "away": "Bristol Rovers" },
+        { "time": "21:45", "home": "Barrow", "away": "Tranmere" },
+        { "time": "21:45", "home": "Bromley", "away": "Crawley" },
+        { "time": "21:45", "home": "Cambridge Utd", "away": "Chesterfield" },
+        { "time": "21:45", "home": "Fleetwood", "away": "Salford" },
+        { "time": "21:45", "home": "Harrogate", "away": "Accrington" },
+        { "time": "21:45", "home": "Notts Co", "away": "MK Dons" },
+        { "time": "21:45", "home": "Shrewsbury", "away": "Grimsby" },
+        { "time": "21:45", "home": "Swindon", "away": "Cheltenham" }
       ]
     }
   }

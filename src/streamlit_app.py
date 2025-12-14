@@ -91,6 +91,10 @@ def load_latest_full_league_data():
     latest_file = max(candidates, key=os.path.getmtime)
     full_timestamp = os.path.basename(latest_file).split('_')[-1].replace('.json', '')
 
+    # Debug: Show what file is being used as latest
+    print(f"DEBUG: Latest file found: {os.path.basename(latest_file)}")
+    print(f"DEBUG: Full timestamp: {full_timestamp}")
+
     # Extract date and hour-minute from timestamp
     # Example: 065856 -> use 0658 to match 065840, 065843, 065847, 065850, 065853, 065856
     if len(full_timestamp) >= 4:  # Format: HHMMSS
@@ -106,8 +110,11 @@ def load_latest_full_league_data():
     else:
         base_pattern = base_time
 
+    print(f"DEBUG: Base pattern: {base_pattern}")
+
     # Find all files from the same analysis run (same date and hour-minute)
     same_run_files = [f for f in candidates if base_pattern in os.path.basename(f)]
+    print(f"DEBUG: Found {len(same_run_files)} files from same run")
 
     # Load all files from the same run
     all_data = []
@@ -388,11 +395,18 @@ def main():
             # Combine all suggestions from all leagues
             all_suggestions = []
             all_parlays = []
+
+            # Debug info for parlay loading
+            parlay_debug_info = []
+
             for data in full_league_data_list:
                 if isinstance(data, dict):
                     league_code = data.get('league_code', 'Unknown')
                     suggestions = data.get('suggestions', [])
                     parlays = data.get('favorable_parlays', [])
+
+                    # Debug tracking
+                    parlay_debug_info.append(f"{league_code}: {len(parlays)} parlays")
 
                     # Add league info to each suggestion
                     for suggestion in suggestions:
@@ -403,6 +417,15 @@ def main():
                     for parlay in parlays:
                         parlay['league'] = league_code
                     all_parlays.extend(parlays)
+
+            # Show debug info in expander
+            with st.expander("🔍 Debug Info - Parlay Loading"):
+                st.write("Parlay count per league:")
+                for info in parlay_debug_info:
+                    st.text(info)
+                st.write(f"Total parlays loaded: {len(all_parlays)}")
+                if all_parlays:
+                    st.write("Sample parlay keys:", list(all_parlays[0].keys()) if all_parlays else "None")
 
             # Quick filters
             fcol1, fcol2, fcol3 = st.columns([2,1,1])

@@ -1,6 +1,6 @@
 # Football Analytics Analyser - Quick Reference Guide
 
-**Last Updated:** December 6, 2025
+**Last Updated:** December 14, 2025
 
 ## 🆕 **NEW FEATURE: Dynamic League Extraction**
 When using `--use-parsed-all` with `--leagues ALL` (or no `--leagues` specified), the system now automatically detects and processes only the leagues present in your parsed fixtures file. This eliminates the "ALL.csv not found" error and makes the system much more resource-efficient.
@@ -315,6 +315,79 @@ python data_manager.py --full-cleanup
 
 ---
 
+## 🎯 **NEW: Niche Markets Analysis**
+
+### Niche Market Commands (Odd/Even, Highest Scoring Half)
+```bash
+# Navigate to niche markets directory
+cd src/niche_markets
+
+# Parse upcoming games for niche analysis
+python3 parse_games.py
+
+# Get strategic parlay recommendations (2-slip combinations)
+python3 strategic_parlays.py
+
+# Quick daily analysis of niche markets
+python3 quick_analysis.py
+
+# Use existing predictors
+python3 -c "from odd_even_predictor import OddEvenPredictor; predictor = OddEvenPredictor(); print(f'League One odd probability: {predictor.get_league_odd_probability(\"E2\"):.1%}')"
+```
+
+### Niche Market File Structure
+```
+src/niche_markets/
+├── parse_games.py              # Parse upcoming games JSON
+├── strategic_parlays.py        # Optimal parlay combinations  
+├── quick_analysis.py           # Daily niche market analysis
+├── odd_even_predictor.py       # Odd/Even prediction algorithms
+├── half_comparison_predictor.py # Highest scoring half predictor
+├── lower_league_analysis.py    # Lower league volatility analysis
+├── league_priors.py           # League-specific probability priors
+└── data/
+    └── upcomingGames-*.json   # Parsed upcoming games
+```
+
+---
+
+## 🔄 **Combined Analysis Workflows**
+
+### Run Corners + Full League Together (Sequential)
+```bash
+# Method 1: Chain commands with && (recommended)
+python cli.py --task full-league --use-parsed-all --ml-mode predict --enable-double-chance --dc-min-prob 0.75 --verbose && python cli.py --task corners --use-parsed-all --ml-mode predict --enable-double-chance --dc-min-prob 0.75 --verbose
+
+# Method 2: With specific date
+python cli.py --task full-league --use-parsed-all --fixtures-date 20251214 --ml-mode predict --enable-double-chance --verbose && python cli.py --task corners --use-parsed-all --fixtures-date 20251214 --ml-mode predict --enable-double-chance --verbose
+```
+
+### Run Corners + Full League Together (Parallel)
+```bash
+# Terminal 1: Full League Analysis
+python cli.py --task full-league --use-parsed-all --ml-mode predict --enable-double-chance --dc-min-prob 0.75 --dc-secondary-threshold 0.80 --dc-allow-multiple --verbose
+
+# Terminal 2: Corner Analysis  
+python cli.py --task corners --use-parsed-all --ml-mode predict --enable-double-chance --dc-min-prob 0.75 --corners-use-ml-prediction --verbose
+
+# Terminal 3: Niche Markets (Optional)
+cd src/niche_markets && python3 strategic_parlays.py
+```
+
+### Complete Daily Analysis (All Markets)
+```bash
+# 1. Standard Markets (Full League + Corners)
+python cli.py --task full-league --use-parsed-all --ml-mode predict --enable-double-chance --verbose && python cli.py --task corners --use-parsed-all --ml-mode predict --enable-double-chance --verbose
+
+# 2. Niche Markets (Odd/Even + Highest Scoring Half)  
+cd src/niche_markets && python3 strategic_parlays.py && cd ../..
+
+# 3. View all results in Streamlit
+streamlit run src/streamlit_app.py
+```
+
+---
+
 ## 📊 Output Files
 
 ### Analysis Results
@@ -556,6 +629,14 @@ data/analysis/full_league_suggestions_D1_20251206_123458.json
 
 ## 📅 Version History
 
+### v2.2.0 (December 14, 2025)
+- ✅ **NEW:** Niche Markets Analysis (Odd/Even, Highest Scoring Half)
+- ✅ **NEW:** Strategic Parlay Optimizer for 2-slip combinations
+- ✅ **NEW:** Lower League Priority Analysis (League One, LaLiga2, Greek Super League)
+- ✅ **NEW:** Combined Analysis Workflows (Sequential & Parallel execution)
+- ✅ **ADDED:** Cross-league parlay recommendations with correlation risk assessment
+- ✅ **ENHANCED:** Quick Reference Guide with comprehensive workflow examples
+
 ### v2.1.0 (December 6, 2025)
 - ✅ **NEW:** Dynamic League Extraction for `--use-parsed-all`
 - ✅ **IMPROVED:** Multi-directory fixtures file search
@@ -572,82 +653,3 @@ data/analysis/full_league_suggestions_D1_20251206_123458.json
 ---
 
 *For more detailed documentation, see the full README.md and other files in ReadMeDocs/*
-Edit `cli.py`, add method to `FootballAnalyticsCLI` class:
-```python
-def task_my_analysis(self, args):
-    """My custom analysis."""
-    from my_module import analyze
-    analyze()
-    return 0
-```
-
-Then add to task choices and call in `run()` method.
-
----
-
-## 📈 Performance Tips
-
-1. **First run is slowest** - Download + organize takes time
-2. **Use specific leagues** - E0 is faster than all leagues
-3. **Cache results** - Check `data/corners/` for reusable models
-4. **Parallel analysis** - Run multiple league analyses in separate terminals:
-   ```bash
-   # Terminal 1
-   python cli.py --task full-league --league E0 &
-   
-   # Terminal 2
-   python cli.py --task full-league --league SP1 &
-   ```
-5. **Use ML predictions** - Once trained, ML models are fast:
-   ```bash
-   python cli.py --task full-league --league E0 --ml-mode predict --ml-save-models
-   ```
-
----
-
-## 📞 Getting Help
-
-```bash
-# Show comprehensive help
-python cli.py --task help
-
-# Show all CLI options
-python cli.py --help
-
-# Show data manager options
-python data_manager.py --help
-
-# Show corners analyzer options
-python src/corners_analysis.py --help
-
-# Check recent logs
-tail -20 logs/cli_*.log
-
-# View Streamlit app info
-streamlit run src/streamlit_app.py --logger.level=debug
-```
-
----
-
-## 🎓 Next Steps
-
-1. **Run your first analysis:** `python cli.py --task full-league --league E0`
-2. **View results in Streamlit:** `streamlit run src/streamlit_app.py`
-3. **Analyze corners:** `python cli.py --task analyze-corners`
-4. **Download upcoming fixtures:** `python cli.py --task download-fixtures --update-today`
-5. **Convert and analyze:** `python cli.py --task convert-upcoming --file data/raw/upcomingMatches.json --output-dir data/analysis`
-6. **Read PROJECT_STRUCTURE_ANALYSIS.md** for detailed architecture
-
----
-
-## ✨ Recent Updates (December 5, 2025)
-
-- ✅ Fixed `analyze-corners` task - now uses proper workflow sequence
-- ✅ Added Streamlit dashboard for interactive result viewing
-- ✅ Improved corner analysis with ML predictions support
-- ✅ Added `convert-upcoming` task for converting upcoming games JSON
-- ✅ Updated all workflows with latest commands and options
-- ✅ Fixed line-by-line table display for match suggestions
-- ✅ Added upcoming fixtures workflow examples
-
-*For more information, see PROJECT_STRUCTURE_ANALYSIS.md and README.md*
