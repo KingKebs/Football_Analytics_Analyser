@@ -315,6 +315,82 @@ python data_manager.py --full-cleanup
 
 ---
 
+## ⚙️ **GitHub Actions CI/CD & Testing**
+
+### Automated Testing Workflow
+The project includes a GitHub Actions workflow (`.github/workflows/python-package.yml`) that automatically runs when code is pushed to the `dev` branch.
+
+#### Workflow Features:
+- **Multi-Python Version Testing:** Tests on Python 3.9, 3.10, and 3.11
+- **Automated Linting:** Uses flake8 for code quality checks
+- **Unit Testing:** Runs pytest test suite automatically
+- **Cross-Platform:** Runs on Ubuntu latest
+
+#### Manual Testing Commands:
+```bash
+# Run all tests
+pytest
+
+# Run tests with verbose output
+pytest -v
+
+# Run specific test file
+pytest tests/test_algorithms_rating.py
+
+# Run tests with coverage
+pytest --cov=src
+
+# Lint code manually
+flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+```
+
+#### Test Files Structure:
+```
+tests/
+├── conftest.py                      # Test configuration and fixtures
+├── test_algorithms_rating.py        # Algorithm testing
+├── test_markets_external_override.py # Market override testing
+├── test_ml_pipeline.py              # ML pipeline testing
+├── test_refactor_upcoming_matches.py # Fixtures processing testing
+└── test_suggestion_blend.py         # Suggestion blending testing
+```
+
+#### Adding New Tests:
+```bash
+# Create new test file following naming convention
+touch tests/test_niche_markets.py
+
+# Example test structure:
+```python
+import pytest
+from src.niche_markets.odd_even_predictor import OddEvenPredictor
+
+def test_league_one_odd_probability():
+    predictor = OddEvenPredictor()
+    prob = predictor.get_league_odd_probability('E2')
+    assert prob > 0.5, "League One should have >50% odd probability"
+    assert prob == 0.5407, "League One empirical rate should be 54.07%"
+```
+
+#### Workflow Triggers:
+- **Push to dev branch:** Automatically runs full test suite
+- **Pull requests to dev:** Runs tests before merge
+- **Manual trigger:** Can be run manually from GitHub Actions tab
+
+#### Debugging Failed Tests:
+```bash
+# Check workflow status
+# Go to: https://github.com/KingKebs/Football_Analytics_Analyser/actions
+
+# Run tests locally to debug
+pytest -v --tb=short
+
+# Check specific failing test
+pytest tests/test_specific_file.py::test_function_name -v
+```
+
+---
+
 ## 🎯 **NEW: Niche Markets Analysis**
 
 ### Niche Market Commands (Odd/Even, Highest Scoring Half)
