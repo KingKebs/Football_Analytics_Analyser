@@ -45,7 +45,7 @@ which will pick up the newly created todays_fixtures_<DATE>.json from data/.
 import argparse
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import csv
 import re
@@ -116,7 +116,7 @@ def convert(data, out_date: str) -> list:
         for competition, payload in comps.items():
             if not isinstance(payload, dict):
                 continue
-            fx_list = payload.get('Fixtures') or []
+            fx_list = payload.get('Fixtures') or payload.get('Matches') or []
             if not isinstance(fx_list, list):
                 continue
             league_code = LEAGUE_MAP.get(competition) or COUNTRY_FALLBACK.get(country.upper(), '')
@@ -171,7 +171,7 @@ def main():
         print(f"Failed to read JSON: {e}")
         return 1
 
-    out_date = args.date or datetime.utcnow().date().isoformat()
+    out_date = args.date or datetime.now(timezone.utc).date().isoformat()
     fixtures = convert(raw, out_date)
     if not fixtures:
         print("No fixtures extracted.")

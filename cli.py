@@ -61,6 +61,9 @@ class FootballAnalyticsCLI:
         'download': [
             'download_all_tabs.py',
         ],
+        'download-fixtures': [
+            'fixtures_downloader.py',
+        ],
         'organize': [
             'organize_structure.py',
         ],
@@ -157,7 +160,7 @@ class FootballAnalyticsCLI:
             '--task',
             required=True,
             choices=[
-                'full-league', 'single-match', 'download', 'organize',
+                'full-league', 'single-match', 'download', 'download-fixtures', 'organize',
                 'validate', 'corners', 'analyze-corners', 'view', 'backtest', 'help',
                 # New task to run convert_upcoming_matches.py
                 'convert-upcoming',
@@ -172,7 +175,12 @@ class FootballAnalyticsCLI:
 
         # Converter-specific args
         parser.add_argument('--output-dir', dest='output_dir', default='data', help='Output directory for convert_upcoming_matches.py [default: data]')
-        parser.add_argument('--date', help='Override date (YYYY-MM-DD) for convert_upcoming_matches.py')
+        parser.add_argument('--date', help='Override date (YYYY-MM-DD) for convert_upcoming_matches.py or fixtures download')
+
+        # Fixtures download options
+        parser.add_argument('--update-today', action='store_true', help='Download fixtures for today')
+        parser.add_argument('--tomorrow', action='store_true', help='Download fixtures for tomorrow')
+        parser.add_argument('--no-cache', action='store_true', help='Skip cache and force fresh download from APIs')
 
         # Match analysis options
         parser.add_argument('--home', help='Home team name (for single match analysis)')
@@ -267,6 +275,8 @@ class FootballAnalyticsCLI:
                 return self.task_single_match(args)
             elif args.task == 'download':
                 return self.task_download(args)
+            elif args.task == 'download-fixtures':
+                return self.task_download_fixtures(args)
             elif args.task == 'organize':
                 return self.task_organize(args)
             elif args.task == 'validate':
@@ -536,6 +546,8 @@ class FootballAnalyticsCLI:
         try:
             from corners_analysis import CornersAnalyzer
             from pathlib import Path
+            import os
+            from datetime import datetime
 
             data_dir = Path('football-data')
             csv_files = list(data_dir.glob('*.csv'))
@@ -547,8 +559,49 @@ class FootballAnalyticsCLI:
             if not args.dry_run:
                 for csv_file in csv_files[:1]:  # Analyze first by default
                     logger.info(f"Analyzing {csv_file.name}")
-                    analyzer = CornersAnalyzer(str(csv_file))
-                    analyzer.run_full_analysis()
+                    analyzer = CornersAnalyzer(
+                        str(csv_file),
+                        rf_params={
+                            'n_estimators': args.corners_rf_n_estimators,
+                            'random_state': 42,
+                            'n_jobs': args.corners_n_jobs,
+                            'max_depth': args.corners_rf_max_depth
+                        },
+                        cv_folds=args.corners_cv_folds,
+                        half_life_days=args.corners_half_life_days,
+                        mc_samples=args.corners_mc_samples
+                    )
+
+                    # Execute the proper workflow
+                    if analyzer.load_data() is None:
+                        logger.warning(f"Failed to load data from {csv_file.name}")
+                        continue
+
+                    if not analyzer.validate_corners_data():
+                        logger.warning(f"Invalid corners data in {csv_file.name}")
+                        continue
+
+                    analyzer.clean_features()
+                    analyzer.engineer_features()
+                    analyzer.estimate_half_split()
+                    analyzer.calculate_correlations()
+                    analyzer.calculate_team_stats()
+
+                    if args.train_model:
+                        metrics = analyzer.train_models(
+                            save_models=args.corners_save_models,
+                            models_dir=args.corners_models_dir
+                        )
+                        logger.info(f"Model metrics: {metrics}")
+
+                    if args.save_enriched:
+                        out_dir = args.output_dir or 'data/corners'
+                        os.makedirs(out_dir, exist_ok=True)
+                        enriched_path = os.path.join(out_dir, f'enriched_{csv_file.stem}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv')
+                        analyzer.enriched_df.to_csv(enriched_path, index=False)
+                        logger.info(f"Enriched feature set saved: {enriched_path}")
+
+                    logger.info(f"✓ Analysis complete for {csv_file.name}")
 
             logger.info(f"✓ Analyzed {len(csv_files)} files")
             return 0
@@ -672,6 +725,19 @@ class FootballAnalyticsCLI:
   
   $ python cli.py --task analyze-corners
 
+### DOWNLOAD FIXTURES
+  Automatically download today's fixtures from free APIs.
+  
+  $ python cli.py --task download-fixtures --update-today
+  $ python cli.py --task download-fixtures --date 2025-11-30
+  $ python cli.py --task download-fixtures --leagues "Championship,League One"
+  
+  Options:
+    --update-today        Download fixtures for today
+    --tomorrow            Download fixtures for tomorrow  
+    --date YYYY-MM-DD     Download fixtures for specific date
+    --no-cache           Skip cache and force fresh API calls
+
 ### VIEW RESULTS
   View generated suggestions and predictions.
   
@@ -714,9 +780,24 @@ class FootballAnalyticsCLI:
     def task_convert_upcoming(self, args):
         """Run src/convert_upcoming_matches.py with provided input/output args."""
         import subprocess
+        from datetime import datetime
 
         input_path = args.input or 'data/raw/upcomingMatches.json'
-        cmd = [sys.executable, 'src/convert_upcoming_matches.py', '--input', input_path, '--output-dir', args.output_dir]
+
+        # Ensure the output directory exists
+        if not os.path.isdir(args.output_dir):
+            os.makedirs(args.output_dir, exist_ok=True)
+
+        # Pass the output directory to the script (not a specific file)
+        cmd = [
+            sys.executable,
+            "src/convert_upcoming_matches.py",
+            "--input",
+            input_path,
+            "--output-dir",
+            args.output_dir,
+        ]
+
         if args.date:
             cmd.extend(['--date', args.date])
 
@@ -724,6 +805,55 @@ class FootballAnalyticsCLI:
         if args.dry_run:
             return 0
         return subprocess.run(cmd, capture_output=False, text=True).returncode
+
+    def task_download_fixtures(self, args):
+        """Download today's fixtures from free APIs and update upcomingMatches.json"""
+        logger.info("Downloading fixtures from free APIs...")
+
+        try:
+            from fixtures_downloader import FixturesDownloader
+            from datetime import datetime, timedelta
+
+            downloader = FixturesDownloader()
+
+            # Determine target date
+            if args.update_today:
+                target_date = datetime.now().strftime('%Y-%m-%d')
+            elif args.tomorrow:
+                target_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+            elif args.date:
+                target_date = args.date
+            else:
+                target_date = datetime.now().strftime('%Y-%m-%d')
+                logger.info("No date specified, using today")
+
+            # Parse leagues from CLI args
+            target_leagues = None
+            if args.leagues:
+                target_leagues = [league.strip() for league in args.leagues.split(',')]
+            elif args.league and args.league != 'ALL':
+                target_leagues = [args.league]
+
+            # Download and update fixtures
+            downloader.update_upcoming_matches(
+                date=target_date,
+                leagues=target_leagues,
+                dry_run=args.dry_run
+            )
+
+            if not args.dry_run:
+                logger.info(f"✅ Successfully updated fixtures for {target_date}")
+                logger.info(f"📁 Output: {downloader.config['output_file']}")
+
+            return 0
+
+        except ImportError as e:
+            logger.error(f"Could not import fixtures downloader: {e}")
+            logger.info("Install dependencies: pip install requests beautifulsoup4")
+            return 1
+        except Exception as e:
+            logger.error(f"Fixtures download failed: {e}")
+            return 1
 
 
 def main():

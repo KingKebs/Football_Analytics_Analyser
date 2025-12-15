@@ -632,11 +632,44 @@ except NameError:
         p.add_argument('--corners-mc-samples', type=int, default=1000)
         return p.parse_args()
 
+def extract_leagues_from_parsed_fixtures_corners(fixtures_date: str = None, data_dir: str = 'data') -> list:
+    """Extract unique league codes from parsed fixtures file for corners analysis."""
+    try:
+        fixtures_df = _load_parsed_fixtures(date_str=fixtures_date, data_dir=data_dir)
+        if fixtures_df.empty:
+            return []
+
+        # Extract unique leagues efficiently
+        leagues_col = 'League' if 'League' in fixtures_df.columns else 'Competition'
+        if leagues_col not in fixtures_df.columns:
+            return []
+
+        leagues = fixtures_df[leagues_col].dropna().str.strip().str.upper()
+        unique_leagues = sorted([l for l in leagues.unique() if l and l in SUPPORTED_LEAGUES])
+
+        print(f"Extracted {len(unique_leagues)} supported leagues from parsed fixtures: {','.join(unique_leagues)}")
+        return unique_leagues
+    except Exception as e:
+        print(f"Failed to extract leagues from parsed fixtures: {e}")
+        return []
+
 def main():
     args = parse_args(); np.random.seed(args.seed)
     if args.home_only and args.away_only:
         print('Cannot set both --home-only and --away-only'); return 1
-    leagues = SUPPORTED_LEAGUES if args.league.upper() == 'ALL' else [l.strip().upper() for l in args.league.split(',') if l.strip()]
+
+    # Dynamic league extraction when using parsed fixtures with 'ALL'
+    if args.league.upper() == 'ALL' and args.use_parsed_all:
+        extracted_leagues = extract_leagues_from_parsed_fixtures_corners(fixtures_date=args.fixtures_date)
+        if extracted_leagues:
+            leagues = extracted_leagues
+            print(f"Dynamically using leagues from parsed fixtures: {','.join(leagues)}")
+        else:
+            print("No supported leagues found in parsed fixtures, falling back to all")
+            leagues = SUPPORTED_LEAGUES
+    else:
+        leagues = SUPPORTED_LEAGUES if args.league.upper() == 'ALL' else [l.strip().upper() for l in args.league.split(',') if l.strip()]
+
     summaries = []; analyzers = {}
     # Process each league once (no duplicate work for use-parsed-all)
     for lg in leagues:

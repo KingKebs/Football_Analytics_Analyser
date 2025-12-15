@@ -21,11 +21,12 @@ import argparse
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 import re
+import glob
+import itertools
 
 import numpy as np
 import pandas as pd
 import logging
-import glob
 import difflib
 from data_file_utils import ensure_dirs_for_writing
 import time
@@ -284,18 +285,28 @@ def load_parsed_fixtures(date_str: str = None, data_dir: str = DATA_DIR) -> pd.D
     """Load parsed fixtures from data/todays_fixtures_*.csv|json produced by parse_match_log.py"""
     if date_str is None:
         date_str = datetime.now().strftime('%Y%m%d')
-    csv_path = os.path.join(data_dir, f"todays_fixtures_{date_str}.csv")
-    json_path = os.path.join(data_dir, f"todays_fixtures_{date_str}.json")
 
+    # Search in multiple directories: data/, data/analysis/
+    search_dirs = [data_dir, os.path.join(data_dir, 'analysis')]
     candidates = []
-    if os.path.exists(csv_path):
-        candidates.append(csv_path)
-    if os.path.exists(json_path):
-        candidates.append(json_path)
+
+    for search_dir in search_dirs:
+        csv_path = os.path.join(search_dir, f"todays_fixtures_{date_str}.csv")
+        json_path = os.path.join(search_dir, f"todays_fixtures_{date_str}.json")
+        if os.path.exists(csv_path):
+            candidates.append(csv_path)
+        if os.path.exists(json_path):
+            candidates.append(json_path)
+
     if not candidates:
-        all_files = sorted(glob.glob(os.path.join(data_dir, 'todays_fixtures_*.csv')) + glob.glob(os.path.join(data_dir, 'todays_fixtures_*.json')), key=lambda p: os.path.getmtime(p), reverse=True)
-        if all_files:
-            candidates.append(all_files[0])
+        # Fallback: search all directories for any fixtures files
+        for search_dir in search_dirs:
+            if os.path.isdir(search_dir):
+                all_files = sorted(glob.glob(os.path.join(search_dir, 'todays_fixtures_*.csv')) +
+                                 glob.glob(os.path.join(search_dir, 'todays_fixtures_*.json')),
+                                 key=lambda p: os.path.getmtime(p), reverse=True)
+                if all_files:
+                    candidates.extend(all_files[:1])  # Take most recent from each dir
 
     if not candidates:
         return pd.DataFrame()
@@ -685,7 +696,7 @@ def analyze_parsed_fixtures_all(parsed_df: pd.DataFrame, min_confidence: float, 
 
 def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parsed_all: bool = False, min_confidence: float = 0.6, risk_profile: str = 'moderate', rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, rating_range_filter=None,
                      ml_mode: str = 'off', ml_validate: bool = False, ml_algorithms: List[str] = None, ml_decay: float = 0.85, ml_min_samples: int = 300, ml_save_models: bool = False, ml_models_dir: str = 'models', input_log: str = None, fixtures_date: str = None,
-                     enable_double_chance: bool = False, dc_min_prob: float = 0.75, dc_secondary_threshold: float = 0.80, dc_allow_multiple: bool = False, ml_models_shared: Dict = None, ml_feature_df_shared: pd.DataFrame = None):
+                     enable_double_chance: bool = False, dc_min_prob: float = 0.75, dc_secondary_threshold: float = 0.80, dc_allow_multiple: bool = False, ml_models_shared: Dict = None, ml_feature_df_shared: pd.DataFrame = None, return_results: bool = False):
     logging.info("Starting full league analytics workflow")
     logging.info(f"Bankroll={bankroll}, League={league_code}, Rating={rating_model}, ML_Mode={ml_mode}")
 
@@ -760,6 +771,27 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
 
     # --- Source fixtures logic with input log override ---
     parsed_fixtures = load_parsed_fixtures(date_str=fixtures_date)
+
+    # Add league column if missing for proper filtering in cross-league mode
+    if not parsed_fixtures.empty and 'league' not in parsed_fixtures.columns:
+        # Normalize / populate a lowercase 'league' column robustly (case-insensitive)
+        # 1) If a capitalized 'League' exists, use it directly
+        if 'League' in parsed_fixtures.columns:
+            parsed_fixtures['league'] = parsed_fixtures['League'].astype(str).str.strip()
+        else:
+            # 2) Find any column named 'competition' case-insensitively and map it using COMPETITION_TO_LEAGUE
+            comp_col = next((c for c in parsed_fixtures.columns if str(c).lower() == 'competition'), None)
+            if comp_col:
+                # Use the local COMPETITION_TO_LEAGUE mapping defined in this module for stability
+                parsed_fixtures['league'] = parsed_fixtures[comp_col].map(lambda v: COMPETITION_TO_LEAGUE.get(str(v).strip(), '')).fillna('').astype(str).str.strip()
+            else:
+                # 3) Fallback: if any column named 'league' exists (different casing), use it
+                league_col = next((c for c in parsed_fixtures.columns if str(c).lower() == 'league'), None)
+                if league_col:
+                    parsed_fixtures['league'] = parsed_fixtures[league_col].astype(str).str.strip()
+                else:
+                    parsed_fixtures['league'] = ''
+
     log_df = parse_input_log(input_log) if input_log else pd.DataFrame()
 
     if not log_df.empty:
@@ -784,18 +816,36 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
             logging.warning("No valid matches from input log for this league; falling back to standard fixture logic")
             fixtures_df = None
     elif use_parsed_all and not parsed_fixtures.empty:
-        suggestions, skipped = analyze_parsed_fixtures_all(parsed_fixtures, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
-                                                           enable_double_chance=enable_double_chance, dc_min_prob=dc_min_prob, dc_secondary_threshold=dc_secondary_threshold, dc_allow_multiple=dc_allow_multiple)
-        if skipped:
-            logging.info(f"Skipped {len(skipped)} parsed fixtures (team/league inference failures)")
-            # breakdown by reason
-            reason_counts = {}
-            for sk in skipped:
-                r = sk.get('reason','unknown')
-                reason_counts[r] = reason_counts.get(r, 0) + 1
-            logging.info("Skip reasons: " + ', '.join(f"{k}={v}" for k,v in reason_counts.items()))
-        logging.info(f"Parsed fixture inference: success={len(suggestions)} skipped={len(skipped)}")
-        fixtures_df = None
+        # For cross-league parlay generation, we need to process fixtures by individual leagues
+        # rather than using the all-in-one analyze_parsed_fixtures_all function
+        if return_results:
+            # When return_results is True, we're in multi-league mode - process only this league's fixtures
+            league_fixtures = parsed_fixtures[parsed_fixtures['league'] == league_code] if 'league' in parsed_fixtures.columns else pd.DataFrame()
+            if not league_fixtures.empty:
+                mapped, skipped = map_parsed_to_canonical(league_fixtures, strengths_df, league_code)
+                if not mapped.empty:
+                    fixtures_df = mapped
+                    logging.info(f"Processed {len(mapped)} parsed fixtures for league {league_code}")
+                else:
+                    fixtures_df = pd.DataFrame()
+                    logging.warning(f"No valid fixtures found for league {league_code}")
+            else:
+                fixtures_df = pd.DataFrame()
+                logging.warning(f"No fixtures found for league {league_code} in parsed data")
+        else:
+            # Legacy single-league processing
+            suggestions, skipped = analyze_parsed_fixtures_all(parsed_fixtures, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
+                                                               enable_double_chance=enable_double_chance, dc_min_prob=dc_min_prob, dc_secondary_threshold=dc_secondary_threshold, dc_allow_multiple=dc_allow_multiple)
+            if skipped:
+                logging.info(f"Skipped {len(skipped)} parsed fixtures (team/league inference failures)")
+                # breakdown by reason
+                reason_counts = {}
+                for sk in skipped:
+                    r = sk.get('reason','unknown')
+                    reason_counts[r] = reason_counts.get(r, 0) + 1
+                logging.info("Skip reasons: " + ', '.join(f"{k}={v}" for k,v in reason_counts.items()))
+            logging.info(f"Parsed fixture inference: success={len(suggestions)} skipped={len(skipped)}")
+            fixtures_df = None
     else:
         fixtures_df = None
         if not parsed_fixtures.empty:
@@ -883,9 +933,18 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
     out_dir = os.path.join('data', 'analysis')
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f'full_league_suggestions_{league_code}_{timestamp}.json')
+
+    result_data = {'suggestions': suggestions, 'favorable_parlays': favorable_parlays}
+
     with open(out_path, 'w') as f:
-        json.dump({'suggestions': suggestions, 'favorable_parlays': favorable_parlays}, f, default=lambda o: o.tolist() if isinstance(o, np.ndarray) else str(o))
+        json.dump(result_data, f, default=lambda o: o.tolist() if isinstance(o, np.ndarray) else str(o))
     logging.info(f"Saved results to: {out_path}")
+
+    # Return results if requested (for cross-league processing)
+    if return_results:
+        result_data['output_path'] = out_path
+        result_data['timestamp'] = timestamp
+        return result_data
 
 
 def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None, use_parsed_all: bool = False, min_confidence: float = 0.6, risk_profile: str = 'moderate', rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, rating_range_filter=None,
@@ -895,18 +954,21 @@ def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None
     """Process multiple leagues; optionally runs leagues in parallel.
 
     Adds timing logs per-league and total time. Uses a ThreadPool when parallel_workers>1 to avoid pickling issues.
+    When use_parsed_all=True, also generates cross-league parlays and saves a comprehensive summary.
     """
     if leagues is None:
         leagues = ['E0']
 
     start_all = time.perf_counter()
     league_times = {}
+    all_league_suggestions = {}  # Store suggestions by league for cross-league parlays
+    league_results = {}  # Store individual league results
 
     def _process_one(league_code: str):
         logging.info(f"Processing league: {league_code}")
         t0 = time.perf_counter()
         try:
-            main_full_league(
+            result = main_full_league(
                 bankroll=bankroll,
                 league_code=league_code,
                 use_parsed_all=use_parsed_all,
@@ -931,8 +993,12 @@ def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None
                 dc_secondary_threshold=dc_secondary_threshold,
                 dc_allow_multiple=dc_allow_multiple,
                 ml_models_shared=shared_ml_models,
-                ml_feature_df_shared=shared_ml_feature_df
+                ml_feature_df_shared=shared_ml_feature_df,
+                return_results=use_parsed_all  # Return results for cross-league processing
              )
+            if use_parsed_all and result:
+                all_league_suggestions[league_code] = result.get('suggestions', [])
+                league_results[league_code] = result
         finally:
             t1 = time.perf_counter()
             elapsed = t1 - t0
@@ -940,20 +1006,235 @@ def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None
             logging.info(f"League {league_code} finished in {elapsed:.2f}s")
 
     if parallel_workers and parallel_workers > 1 and len(leagues) > 1:
-        # Use threads to avoid pickling ML objects; threads can improve throughput for I/O-bound parts.
-        pool = ThreadPool(min(parallel_workers, len(leagues)))
-        pool.map(_process_one, leagues)
-        pool.close()
-        pool.join()
+        # Note: Parallel processing disabled when use_parsed_all=True to collect results properly
+        if use_parsed_all:
+            logging.info("Sequential processing enabled for cross-league parlay generation")
+            for league_code in leagues:
+                _process_one(league_code)
+        else:
+            # Use threads to avoid pickling ML objects; threads can improve throughput for I/O-bound parts.
+            pool = ThreadPool(min(parallel_workers, len(leagues)))
+            pool.map(_process_one, leagues)
+            pool.close()
+            pool.join()
     else:
         for league_code in leagues:
             _process_one(league_code)
+
+    # Generate cross-league parlays when using parsed fixtures
+    if use_parsed_all and all_league_suggestions:
+        _generate_cross_league_parlays(all_league_suggestions, league_results, bankroll, leagues)
 
     total_elapsed = time.perf_counter() - start_all
     logging.info("Per-league timings: " + ', '.join(f"{k}={v:.2f}s" for k,v in league_times.items()))
     logging.info(f"Total full-league processing time: {total_elapsed:.2f}s")
 
     return total_elapsed
+
+
+def _generate_cross_league_parlays(all_league_suggestions: Dict[str, List[Dict]], league_results: Dict[str, Dict], bankroll: float, leagues: List[str]):
+    """Generate cross-league parlays and update results files with comprehensive parlay data."""
+
+    # Collect all predictions across leagues
+    all_predictions = []
+    total_suggestions = 0
+
+    for league_code, suggestions in all_league_suggestions.items():
+        total_suggestions += len(suggestions)
+        for s in suggestions:
+            for p in s['picks']:
+                # Add league info to prediction for better parlay descriptions
+                match_description = f"{s['home']} v {s['away']} ({league_code})"
+                all_predictions.append((match_description, s['home'], s['away'], p['prob'], p['odds'], p['market'], p['selection'], league_code))
+
+    if len(all_predictions) < 2:
+        logging.info(f"Insufficient predictions ({len(all_predictions)}) for cross-league parlays")
+        return
+
+    logging.info(f"\n{Colors.CYAN}🎲 Generating Cross-League Parlays from {total_suggestions} suggestions across {len(leagues)} leagues{Colors.RESET}")
+
+    # Generate parlays with enhanced algorithm
+    cross_league_parlays = _generate_enhanced_parlays(all_predictions, min_size=2, max_size=5, max_results=20)
+
+    # Filter for favorable parlays
+    favorable_parlays = select_favorable_parlays(cross_league_parlays, min_prob=0.3, min_odds=2.0)
+
+    print(f"\n{Colors.CYAN}🎲 Top Cross-League Parlays ({len(favorable_parlays)} favorable from {len(cross_league_parlays)} total):{Colors.RESET}")
+    for i, p in enumerate(favorable_parlays[:10], 1):
+        slip = format_bet_slip(p, bankroll=bankroll)
+        print(f"{i}. Legs ({p['size']}): {', '.join(p['legs'])}")
+        print(f"   Prob: {Colors.GREEN}{p['probability']*100:.1f}%{Colors.RESET}, Odds: {Colors.MAGENTA}{p['decimal_odds']:.2f}{Colors.RESET}, Stake: {Colors.YELLOW}{slip['stake_suggestion']}{Colors.RESET}, Return: {Colors.GREEN}{slip['potential_return']}{Colors.RESET}")
+        if 'leagues_involved' in p:
+            print(f"   Leagues: {Colors.BLUE}{', '.join(p['leagues_involved'])}{Colors.RESET}")
+
+    # Save comprehensive multi-league summary
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    ensure_dirs_for_writing()
+    out_dir = os.path.join('data', 'analysis')
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Create comprehensive summary
+    summary_data = {
+        'timestamp': timestamp,
+        'leagues_analyzed': leagues,
+        'total_suggestions': total_suggestions,
+        'total_predictions': len(all_predictions),
+        'cross_league_parlays': cross_league_parlays,
+        'favorable_parlays': favorable_parlays,
+        'league_breakdown': {
+            league: {
+                'suggestion_count': len(suggestions),
+                'pick_count': sum(len(s['picks']) for s in suggestions)
+            } for league, suggestions in all_league_suggestions.items()
+        },
+        'parlay_statistics': {
+            'total_parlays_generated': len(cross_league_parlays),
+            'favorable_parlays_count': len(favorable_parlays),
+            'avg_favorable_prob': sum(p['probability'] for p in favorable_parlays) / len(favorable_parlays) if favorable_parlays else 0,
+            'avg_favorable_odds': sum(p['decimal_odds'] for p in favorable_parlays) / len(favorable_parlays) if favorable_parlays else 0,
+            'leagues_per_parlay': {
+                str(k): len([p for p in favorable_parlays if len(p.get('leagues_involved', [])) == k])
+                for k in range(1, len(leagues) + 1)
+            }
+        }
+    }
+
+    summary_path = os.path.join(out_dir, f'cross_league_summary_{timestamp}.json')
+    with open(summary_path, 'w') as f:
+        json.dump(summary_data, f, indent=2, default=lambda o: o.tolist() if isinstance(o, np.ndarray) else str(o))
+
+    logging.info(f"Saved cross-league parlay summary to: {summary_path}")
+
+    # Update individual league files with cross-league parlays
+    for league_code in leagues:
+        if league_code in league_results:
+            _update_league_file_with_parlays(league_code, favorable_parlays, timestamp)
+
+
+def _generate_enhanced_parlays(predictions: List[Tuple], min_size: int = 2, max_size: int = 4, max_results: int = 50) -> List[Dict]:
+    """Enhanced parlay generation with league diversity and market type considerations."""
+    import itertools
+
+    def value_metric(pred):
+        """Enhanced value metric considering market type and league diversity"""
+        prob, odds, market, league = pred[3], pred[4], pred[5], pred[7]
+        base_value = prob * (odds - 1) - (1 - prob)
+
+        # Bonus for Double Chance and BTTS markets (safer)
+        market_bonus = 0.02 if market in ['Double Chance', 'BTTS'] else 0
+
+        return base_value + market_bonus
+
+    # Sort predictions by enhanced value
+    preds_sorted = sorted(predictions, key=value_metric, reverse=True)
+
+    parlays = []
+    for r in range(min_size, min(max_size + 1, len(preds_sorted) + 1)):
+        combo_count = 0
+        for combo in itertools.combinations(preds_sorted, r):
+            if combo_count >= max_results * 2:  # Limit combinations to avoid exponential explosion
+                break
+
+            # Extract data from combo
+            match_descriptions = [c[0] for c in combo]
+            probs = [c[3] for c in combo]
+            odds = [c[4] for c in combo]
+            markets = [c[5] for c in combo]
+            selections = [c[6] for c in combo]
+            leagues_involved = list(set(c[7] for c in combo))
+
+            # Skip if all from same league (for cross-league parlays)
+            if len(leagues_involved) < 2 and len(leagues_involved) > 0:
+                continue
+
+            # Calculate combined probability and odds
+            combined_prob = float(np.prod(probs))
+            combined_odds = float(np.prod(odds))
+            expected_return = combined_prob * combined_odds
+
+            # Create enhanced leg descriptions
+            leg_descriptions = []
+            for i, (match_desc, market, selection) in enumerate(zip(match_descriptions, markets, selections)):
+                leg_descriptions.append(f"{match_desc}: {market} {selection}")
+
+            parlays.append({
+                'legs': leg_descriptions,
+                'size': r,
+                'probability': combined_prob,
+                'decimal_odds': combined_odds,
+                'expected_return': expected_return,
+                'leagues_involved': leagues_involved,
+                'market_types': markets,
+                'league_diversity_score': len(leagues_involved) / r  # Higher is better
+            })
+
+            combo_count += 1
+
+    # Sort by expected return, then by league diversity, then by probability
+    parlays = sorted(parlays, key=lambda p: (p['expected_return'], p['league_diversity_score'], p['probability']), reverse=True)
+    return parlays[:max_results]
+
+
+def _update_league_file_with_parlays(league_code: str, favorable_parlays: List[Dict], timestamp: str):
+    """Update individual league files to include cross-league parlays."""
+    out_dir = os.path.join('data', 'analysis')
+
+    # Find the most recent league file
+    pattern = f'full_league_suggestions_{league_code}_*.json'
+    import glob
+    league_files = glob.glob(os.path.join(out_dir, pattern))
+
+    if not league_files:
+        return
+
+    # Get the most recent file
+    latest_file = max(league_files, key=os.path.getctime)
+
+    try:
+        # Read existing data
+        with open(latest_file, 'r') as f:
+            data = json.load(f)
+
+        # Filter parlays that include picks from this league
+        league_relevant_parlays = []
+        for parlay in favorable_parlays:
+            if any(league_code in leg for leg in parlay['legs']):
+                league_relevant_parlays.append(parlay)
+
+        # Update the favorable_parlays section
+        data['favorable_parlays'] = league_relevant_parlays
+        data['cross_league_info'] = {
+            'total_cross_league_parlays': len(favorable_parlays),
+            'relevant_to_this_league': len(league_relevant_parlays),
+            'generated_at': timestamp
+        }
+
+        # Write back to file
+        with open(latest_file, 'w') as f:
+            json.dump(data, f, default=lambda o: o.tolist() if isinstance(o, np.ndarray) else str(o))
+
+        logging.info(f"Updated {league_code} file with {len(league_relevant_parlays)} cross-league parlays")
+
+    except Exception as e:
+        logging.warning(f"Failed to update league file {latest_file}: {e}")
+
+
+def extract_leagues_from_parsed_fixtures(fixtures_date: str = None, data_dir: str = DATA_DIR) -> List[str]:
+    """Extract unique league codes from parsed fixtures file efficiently."""
+    try:
+        parsed_fixtures = load_parsed_fixtures(date_str=fixtures_date, data_dir=data_dir)
+        if parsed_fixtures.empty:
+            return []
+
+        # Extract unique leagues efficiently
+        leagues = parsed_fixtures['League'].dropna().str.strip()
+        unique_leagues = sorted([l for l in leagues.unique() if l])
+
+        logging.info(f"Extracted {len(unique_leagues)} leagues from parsed fixtures: {','.join(unique_leagues)}")
+        return unique_leagues
+    except Exception as e:
+        logging.warning(f"Failed to extract leagues from parsed fixtures: {e}")
+        return []
 
 
 def main(argv=None):
@@ -993,6 +1274,17 @@ def main(argv=None):
     if parsed.league and parsed.league not in leagues_arg.split(','):
         leagues_arg = parsed.league
     leagues_to_run = [l.strip() for l in leagues_arg.split(',') if l.strip()]
+
+    # Dynamic league extraction when using parsed fixtures with 'ALL'
+    if parsed.use_parsed_all and leagues_to_run == ['ALL']:
+        extracted_leagues = extract_leagues_from_parsed_fixtures(fixtures_date=parsed.fixtures_date)
+        if extracted_leagues:
+            leagues_to_run = extracted_leagues
+            logging.info(f"Dynamically using leagues from parsed fixtures: {','.join(leagues_to_run)}")
+        else:
+            logging.warning("No leagues found in parsed fixtures, falling back to default")
+            leagues_to_run = ['E0']
+
     ml_algos_list = [a.strip() for a in parsed.ml_algorithms.split(',') if a.strip()]
 
     # Precompute shared ML assets if requested to avoid repeating per-league
