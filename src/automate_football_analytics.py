@@ -316,7 +316,7 @@ def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: 
     }
 
 
-def main_interactive(bankroll: float = 100.0, league_code: str = None, rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, min_confidence: float = 0.6):
+def main_interactive(bankroll: float = 100.0, league_code: str = None, rating_model: str = 'none', rating_last_n: int = 6, min_sample_for_rating: int = 30, rating_blend_weight: float = 0.3, min_confidence: float = 0.6, enable_double_chance: bool = False, dc_min_prob: float = 0.75, dc_secondary_threshold: float = 0.80, dc_allow_multiple: bool = False):
     logging.info("Starting analytics workflow")
     logging.info(f"Bankroll set to {bankroll}")
 
@@ -386,7 +386,7 @@ def main_interactive(bankroll: float = 100.0, league_code: str = None, rating_mo
     }
 
     suggestion = build_single_match_suggestion(home, away, strengths_df, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
-                                               enable_double_chance=parsed.enable_double_chance, dc_min_prob=parsed.dc_min_prob, dc_secondary_threshold=parsed.dc_secondary_threshold, dc_allow_multiple=parsed.dc_allow_multiple)
+                                               enable_double_chance=enable_double_chance, dc_min_prob=dc_min_prob, dc_secondary_threshold=dc_secondary_threshold, dc_allow_multiple=dc_allow_multiple)
 
     print('\nMatch suggestion: {} v {}'.format(home, away))
     print('Estimated xG -> {}: {:.2f}, {}: {:.2f}'.format(home, suggestion['xg_home'], away, suggestion['xg_away']))
@@ -446,4 +446,4 @@ if __name__ == '__main__':
     parser.add_argument('--dc-allow-multiple', action='store_true')
     args = parser.parse_args()
     rng = _parse_range_filter(args.rating_range_filter)
-    main_interactive(bankroll=args.bankroll, league_code=args.league, rating_model=args.rating_model, rating_last_n=args.rating_last_n, min_sample_for_rating=args.min_sample_for_rating, rating_blend_weight=args.rating_blend_weight, min_confidence=args.min_confidence)
+    main_interactive(bankroll=args.bankroll, league_code=args.league, rating_model=args.rating_model, rating_last_n=args.rating_last_n, min_sample_for_rating=args.min_sample_for_rating, rating_blend_weight=args.rating_blend_weight, min_confidence=args.min_confidence, enable_double_chance=args.enable_double_chance, dc_min_prob=args.dc_min_prob, dc_secondary_threshold=args.dc_secondary_threshold, dc_allow_multiple=args.dc_allow_multiple)
