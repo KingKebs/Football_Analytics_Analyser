@@ -83,6 +83,107 @@ python cli.py --task single-match --home Arsenal --away Chelsea
 python cli.py --task analyze-corners --enable-double-chance --dc-min-prob 0.75 --ml-mode predict --verbose
 ```
 
+---
+
+## 🤖 Machine Learning Predictions
+
+### Running ML Predictions for Multiple Leagues
+
+Generate ML predictions for all top European leagues:
+
+```bash
+# Multiple leagues with ML predictions
+python3 cli.py --task full-league --leagues E0,SP1,D1,I1,F1 \
+  --ml-mode predict --ml-algorithms rf \
+  --min-confidence 0.4 --enable-double-chance --use-parsed-all
+
+# Single league (EPL only)
+python3 cli.py --task full-league --leagues E0 --ml-mode predict --ml-algorithms rf
+```
+
+### ML Prediction Features
+
+**Outputs Include:**
+- ⚽ **Total Goals**: Predicted match total (regression model)
+- 🎯 **1X2 Probabilities**: Home/Draw/Away win % (classification)
+- 🔄 **BTTS Probabilities**: Both Teams To Score Yes/No %
+- 🎲 **DC Probabilities**: Double Chance (1X, X2, 12)
+- 📊 **ML vs Poisson**: Comparison deltas with baseline
+
+**Key Features:**
+- ✅ Unique predictions per match (not identical!)
+- ✅ Uses rolling stats (last 6 matches)
+- ✅ Advanced features: shots, corners, fouls, team form
+- ✅ Random Forest & XGBoost models
+- ✅ Cross-validation metrics available
+
+### Output Files
+
+```
+data/analysis/
+├── consolidated_full_league_YYYYMMDD_HHMMSS.json        # All leagues
+├── consolidated_full_league_YYYYMMDD_HHMMSS_formatted.txt  # Readable
+├── full_league_suggestions_E0_YYYYMMDD_HHMMSS.json      # Per league
+└── full_league_suggestions_E0_YYYYMMDD_HHMMSS_formatted.txt
+```
+
+### Viewing ML Predictions
+
+**1. Streamlit Dashboard (Recommended):**
+```bash
+streamlit run src/streamlit_app.py
+```
+- Navigate to **"ML Predictions"** tab
+- View all predictions in table format
+- Detailed match-by-match cards
+- ML vs Poisson comparison
+- Summary statistics
+
+**2. Formatted Text Files:**
+```bash
+# View latest consolidated output
+cat data/analysis/consolidated_full_league_*_formatted.txt | less
+
+# View specific league
+cat data/analysis/full_league_suggestions_E0_*_formatted.txt | less
+```
+
+**3. JSON Parsing:**
+```bash
+# Pretty print JSON
+python3 -c "import json; \
+  print(json.dumps(json.load(open('data/analysis/consolidated_full_league_20260208_20260208_164108.json')), indent=2))" \
+  | head -100
+```
+
+### ML Model Configuration
+
+```bash
+# Use both Random Forest and XGBoost
+--ml-algorithms rf,xgb
+
+# Save trained models to disk
+--ml-save-models --ml-models-dir models/
+
+# Show cross-validation metrics
+--ml-validate
+
+# Adjust recency weighting (default 0.85)
+--ml-decay 0.9
+
+# Minimum samples needed for training (default 300)
+--ml-min-samples 500
+```
+
+---
+
+### Corner Analysis (continued)
+
+#### Full Corner Analysis on All Data
+```bash
+python cli.py --task analyze-corners --enable-double-chance --dc-min-prob 0.75 --ml-mode predict --verbose
+```
+
 #### Corner Analysis on Specific File
 ```bash
 python cli.py --task corners --file E0_2425.csv --enable-double-chance --dc-min-prob 0.75 --dc-secondary-threshold 0.80 --dc-allow-multiple --ml-mode predict --verbose

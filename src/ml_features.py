@@ -139,30 +139,97 @@ TRAIN_FEATURE_COLUMNS = [
 
 
 def build_match_feature_row(latest_df: pd.DataFrame, home: str, away: str) -> Dict[str, float]:
-    # Use last known values for teams; fallback zeros
-    def last_team_row(team: str):
+    """Build feature vector for a match by extracting team-specific stats.
+
+    This function properly handles the fact that teams can appear as either home or away
+    in the historical data, and correctly extracts their stats regardless of position.
+    """
+    # Compute league averages for fallback
+    league_avg = latest_df[TRAIN_FEATURE_COLUMNS].mean().to_dict()
+
+    def get_team_stats(team: str, is_home_in_prediction: bool) -> Dict[str, float]:
+        """Extract stats for a team from their last match, adjusting for home/away position."""
         rows = latest_df[(latest_df['HomeTeam']==team) | (latest_df['AwayTeam']==team)]
         if rows.empty:
+            logging.debug(f"No matches found for team: {team}")
             return None
-        return rows.iloc[-1]
-    h_last = last_team_row(home)
-    a_last = last_team_row(away)
-    data = {}
-    for col in TRAIN_FEATURE_COLUMNS:
-        if h_last is None or a_last is None:
-            data[col] = 0.0
-        else:
-            # Features with prefix Home_ use home last, Away_ use away last
-            if col.startswith('Home_'):
-                base_col = col.replace('Home_', '')
-                data[col] = float(h_last.get(col, h_last.get(base_col, 0.0)))
-            elif col.startswith('Away_'):
-                base_col = col.replace('Away_', '')
-                data[col] = float(a_last.get(col, a_last.get(base_col, 0.0)))
-            else:
-                # neutral stats: use difference or ratio? keep simple average of last values
-                hv = float(h_last.get(col, 0.0))
-                av = float(a_last.get(col, 0.0))
-                data[col] = (hv + av) / 2.0
-    return data
 
+        last_match = rows.iloc[-1]
+        was_home = last_match['HomeTeam'] == team
+
+        logging.debug(f"Team {team}: found {len(rows)} matches, last match was {'HOME' if was_home else 'AWAY'}")
+        logging.debug(f"  Last match columns available: {list(last_match.index)[:10]}...")
+        logging.debug(f"  Sample values: HS={last_match.get('HS', 'N/A')}, Home_roll_GF={last_match.get('Home_roll_GF', 'N/A')}")
+
+        stats = {}
+        # Extract rolling stats - these are already team-specific in the feature df
+        if was_home:
+            # Team was home in their last match
+            stats['roll_GF'] = last_match.get('Home_roll_GF', 0.0)
+            stats['roll_GA'] = last_match.get('Home_roll_GA', 0.0)
+            stats['roll_ShotsF'] = last_match.get('Home_roll_ShotsF', 0.0)
+            stats['roll_ShotsA'] = last_match.get('Home_roll_ShotsA', 0.0)
+            # Match-level stats from when they were home
+            stats['Shots'] = last_match.get('HS', 0.0)
+            stats['ShotsTarget'] = last_match.get('HST', 0.0)
+            stats['Fouls'] = last_match.get('HF', 0.0)
+            stats['Corners'] = last_match.get('HC', 0.0)
+            stats['Shots_x_ShotsTarget'] = last_match.get('HS_x_HST', 0.0)
+        else:
+            # Team was away in their last match
+            stats['roll_GF'] = last_match.get('Away_roll_GF', 0.0)
+            stats['roll_GA'] = last_match.get('Away_roll_GA', 0.0)
+            stats['roll_ShotsF'] = last_match.get('Away_roll_ShotsF', 0.0)
+            stats['roll_ShotsA'] = last_match.get('Away_roll_ShotsA', 0.0)
+            # Match-level stats from when they were away
+            stats['Shots'] = last_match.get('AS', 0.0)
+            stats['ShotsTarget'] = last_match.get('AST', 0.0)
+            stats['Fouls'] = last_match.get('AF', 0.0)
+            stats['Corners'] = last_match.get('AC', 0.0)
+            stats['Shots_x_ShotsTarget'] = last_match.get('AS_x_AST', 0.0)
+
+        return stats
+
+    # Get stats for both teams
+    home_stats = get_team_stats(home, True)
+    away_stats = get_team_stats(away, False)
+
+    # Check if we have data for both teams
+    if home_stats is None or away_stats is None:
+        missing_team = home if home_stats is None else away
+        logging.warning(f"ML feature fallback to league average for match {home} vs {away} (missing data for {missing_team})")
+        return league_avg
+
+    # Build feature vector in the correct order expected by the model
+    data = {}
+
+    # Home team shots
+    data['HS'] = home_stats['Shots']
+    data['HST'] = home_stats['ShotsTarget']
+    data['HF'] = home_stats['Fouls']
+    data['HC'] = home_stats['Corners']
+    data['HS_x_HST'] = home_stats['Shots_x_ShotsTarget']
+
+    # Away team shots
+    data['AS'] = away_stats['Shots']
+    data['AST'] = away_stats['ShotsTarget']
+    data['AF'] = away_stats['Fouls']
+    data['AC'] = away_stats['Corners']
+    data['AS_x_AST'] = away_stats['Shots_x_ShotsTarget']
+
+    # Ratio features (computed from current match-up)
+    data['Shots_Ratio'] = data['HS'] / (data['AS'] + 1)
+    data['Corners_Ratio'] = (data['HC'] + 1) / (data['AC'] + 1)
+
+    # Rolling form features
+    data['Home_roll_GF'] = home_stats['roll_GF']
+    data['Home_roll_GA'] = home_stats['roll_GA']
+    data['Home_roll_ShotsF'] = home_stats['roll_ShotsF']
+    data['Home_roll_ShotsA'] = home_stats['roll_ShotsA']
+
+    data['Away_roll_GF'] = away_stats['roll_GF']
+    data['Away_roll_GA'] = away_stats['roll_GA']
+    data['Away_roll_ShotsF'] = away_stats['roll_ShotsF']
+    data['Away_roll_ShotsA'] = away_stats['roll_ShotsA']
+
+    return data

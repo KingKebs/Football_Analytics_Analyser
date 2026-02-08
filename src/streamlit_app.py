@@ -142,6 +142,16 @@ def load_latest_corner_predictions_data():
     return _load_json(paths[-1])
 
 
+def load_consolidated_data():
+    """Load the most recent consolidated full league data."""
+    data_dir = 'data/analysis'
+    paths = sorted(glob.glob(os.path.join(data_dir, 'consolidated_full_league_*.json')))
+    if not paths:
+        return None, None
+    latest = paths[-1]
+    return _load_json(latest), latest
+
+
 def load_latest_corners_data():
     """Load the most recent corners analysis data."""
     corners_dir = 'data/corners'
@@ -370,7 +380,7 @@ def main():
     st.sidebar.title("Navigation")
     app_mode = st.sidebar.radio(
         "Choose a view",
-        ["Full League Suggestions", "Corner Analysis", "Corner Predictions", "Live Corner Predictor"]
+        ["Full League Suggestions", "ML Predictions", "Corner Analysis", "Corner Predictions", "Live Corner Predictor"]
     )
     # Toggle to control whether charts/dataframes stretch to the container width (width='stretch')
     stretch_charts = st.sidebar.checkbox("Stretch charts/tables to container width (width='stretch')", value=True)
@@ -518,6 +528,214 @@ def main():
                     st.info("No parlays match your league filter.")
             else:
                 st.info("No favorable parlays found.")
+
+    elif app_mode == "ML Predictions":
+        st.header("🤖 Machine Learning Predictions")
+
+        if not full_league_data_list:
+            st.warning("No ML prediction data found in `data/analysis/`")
+            st.info("Run the league analysis pipeline with `--ml-mode predict` to generate ML predictions.")
+        else:
+            # Display source info
+            if full_league_paths:
+                latest_path = full_league_paths[0]
+                ts = os.path.basename(latest_path).split('_')[-1].replace('.json','')
+                league_codes = [data.get('league_code', 'Unknown') for data in full_league_data_list if isinstance(data, dict)]
+
+                st.caption(f"Analysis run: {ts} | Leagues: {', '.join(league_codes)} | Files: {len(full_league_paths)}")
+
+            # Combine all suggestions from all leagues
+            all_suggestions = []
+            for data in full_league_data_list:
+                if isinstance(data, dict):
+                    league_code = data.get('league_code', 'Unknown')
+                    suggestions = data.get('suggestions', [])
+                    # Add league info to each suggestion
+                    for suggestion in suggestions:
+                        suggestion['league'] = league_code
+                    all_suggestions.extend(suggestions)
+
+            # Filter controls
+            fcol1, fcol2, fcol3 = st.columns([2,1,1])
+            with fcol1:
+                team_filter = st.text_input("Filter by team name", "", key="ml_team_filter").strip().lower()
+            with fcol2:
+                available_leagues = list(set([s.get('league', 'Unknown') for s in all_suggestions]))
+                league_filter = st.selectbox("Filter by league", ['All'] + available_leagues, key="ml_league_filter")
+            with fcol3:
+                show_comparison = st.checkbox("Show ML vs Poisson Δ", value=True)
+
+            st.subheader(f"📊 ML Predictions for {len(all_suggestions)} matches")
+
+            # Check if we have ML predictions
+            has_ml = any(s.get('ml_prediction') for s in all_suggestions)
+
+            if not has_ml:
+                st.warning("No ML predictions found in the data. Run with `--ml-mode predict` to generate ML predictions.")
+            else:
+                # Build ML predictions dataframe
+                ml_rows = []
+                for s in all_suggestions:
+                    home = s.get('home', '')
+                    away = s.get('away', '')
+                    league = s.get('league', 'Unknown')
+
+                    # Apply filters
+                    if team_filter and (team_filter not in home.lower() and team_filter not in away.lower()):
+                        continue
+                    if league_filter != 'All' and league != league_filter:
+                        continue
+
+                    mp = s.get('ml_prediction')
+                    if not mp:
+                        continue
+
+                    # Extract ML predictions
+                    total_goals = mp.get('pred_total_goals', 0)
+                    total_goals_model = mp.get('pred_total_goals_model', 'N/A')
+                    prob_home = mp.get('prob_1x2_home', 0)
+                    prob_draw = mp.get('prob_1x2_draw', 0)
+                    prob_away = mp.get('prob_1x2_away', 0)
+                    prob_btts_yes = mp.get('prob_btts_yes', 0)
+                    prob_btts_no = mp.get('prob_btts_no', 0)
+                    model_1x2 = mp.get('model_1x2', 'N/A')
+                    model_btts = mp.get('model_btts', 'N/A')
+
+                    # Calculate DC probs
+                    dc_1x = prob_home + prob_draw
+                    dc_x2 = prob_draw + prob_away
+                    dc_12 = prob_home + prob_away
+
+                    # Get comparison deltas if available
+                    comparison = s.get('ml_vs_poisson', {})
+                    delta_1x2 = comparison.get('1X2', {})
+                    delta_btts = comparison.get('BTTS', {})
+
+                    row = {
+                        'League': league,
+                        'Match': f"{home} vs {away}",
+                        'Total Goals': f"{total_goals:.2f}",
+                        'Model': total_goals_model,
+                        'Home Win': f"{prob_home:.2f}",
+                        'Draw': f"{prob_draw:.2f}",
+                        'Away Win': f"{prob_away:.2f}",
+                        'BTTS Yes': f"{prob_btts_yes:.2f}",
+                        'BTTS No': f"{prob_btts_no:.2f}",
+                        'DC 1X': f"{dc_1x:.2f}",
+                        'DC X2': f"{dc_x2:.2f}",
+                        'DC 12': f"{dc_12:.2f}",
+                    }
+
+                    # Add delta columns if requested
+                    if show_comparison and delta_1x2:
+                        row['ΔH'] = f"{delta_1x2.get('delta_home', 0):+.2f}"
+                        row['ΔD'] = f"{delta_1x2.get('delta_draw', 0):+.2f}"
+                        row['ΔA'] = f"{delta_1x2.get('delta_away', 0):+.2f}"
+
+                    if show_comparison and delta_btts:
+                        row['ΔBTTS'] = f"{delta_btts.get('delta_yes', 0):+.2f}"
+
+                    ml_rows.append(row)
+
+                if ml_rows:
+                    df_ml = pd.DataFrame(ml_rows)
+                    st.info(f"✅ Showing {len(df_ml)} matches with ML predictions")
+                    show_dataframe(df_ml, stretch=stretch_charts)
+
+                    # Summary statistics
+                    st.subheader("📈 ML Prediction Summary")
+                    col1, col2, col3, col4 = st.columns(4)
+
+                    with col1:
+                        avg_total_goals = sum([float(row['Total Goals']) for row in ml_rows]) / len(ml_rows)
+                        st.metric("Avg Total Goals", f"{avg_total_goals:.2f}")
+
+                    with col2:
+                        avg_home_prob = sum([float(row['Home Win']) for row in ml_rows]) / len(ml_rows)
+                        st.metric("Avg Home Win %", f"{avg_home_prob:.1%}")
+
+                    with col3:
+                        avg_btts_yes = sum([float(row['BTTS Yes']) for row in ml_rows]) / len(ml_rows)
+                        st.metric("Avg BTTS Yes %", f"{avg_btts_yes:.1%}")
+
+                    with col4:
+                        # Count unique total goals values to verify uniqueness
+                        unique_predictions = len(set([row['Total Goals'] for row in ml_rows]))
+                        st.metric("Unique Predictions", f"{unique_predictions}/{len(ml_rows)}")
+
+                    # Detailed match cards
+                    st.subheader("🎯 Detailed Match Predictions")
+                    for s in all_suggestions:
+                        home = s.get('home', '')
+                        away = s.get('away', '')
+                        league = s.get('league', 'Unknown')
+
+                        # Apply filters
+                        if team_filter and (team_filter not in home.lower() and team_filter not in away.lower()):
+                            continue
+                        if league_filter != 'All' and league != league_filter:
+                            continue
+
+                        mp = s.get('ml_prediction')
+                        if not mp:
+                            continue
+
+                        with st.expander(f"{league}: {home} vs {away}"):
+                            # Two column layout
+                            col_left, col_right = st.columns([1, 1])
+
+                            with col_left:
+                                st.markdown("**ML Predictions**")
+                                total_goals = mp.get('pred_total_goals', 0)
+                                st.metric("Total Goals", f"{total_goals:.2f}", delta=None)
+
+                                prob_home = mp.get('prob_1x2_home', 0)
+                                prob_draw = mp.get('prob_1x2_draw', 0)
+                                prob_away = mp.get('prob_1x2_away', 0)
+
+                                st.write("**Match Result Probabilities:**")
+                                st.write(f"  Home Win: {prob_home:.1%}")
+                                st.write(f"  Draw: {prob_draw:.1%}")
+                                st.write(f"  Away Win: {prob_away:.1%}")
+
+                                prob_btts_yes = mp.get('prob_btts_yes', 0)
+                                prob_btts_no = mp.get('prob_btts_no', 0)
+                                st.write("**Both Teams To Score:**")
+                                st.write(f"  Yes: {prob_btts_yes:.1%}")
+                                st.write(f"  No: {prob_btts_no:.1%}")
+
+                            with col_right:
+                                st.markdown("**Double Chance Probabilities**")
+                                dc_1x = prob_home + prob_draw
+                                dc_x2 = prob_draw + prob_away
+                                dc_12 = prob_home + prob_away
+                                st.write(f"  1X (Home or Draw): {dc_1x:.1%}")
+                                st.write(f"  X2 (Draw or Away): {dc_x2:.1%}")
+                                st.write(f"  12 (Home or Away): {dc_12:.1%}")
+
+                                # Show comparison with Poisson if available
+                                comparison = s.get('ml_vs_poisson', {})
+                                if comparison:
+                                    st.markdown("**ML vs Poisson Comparison**")
+                                    delta_1x2 = comparison.get('1X2', {})
+                                    if delta_1x2:
+                                        st.write("**1X2 Deltas:**")
+                                        st.write(f"  Home: {delta_1x2.get('delta_home', 0):+.2f}")
+                                        st.write(f"  Draw: {delta_1x2.get('delta_draw', 0):+.2f}")
+                                        st.write(f"  Away: {delta_1x2.get('delta_away', 0):+.2f}")
+
+                                    delta_btts = comparison.get('BTTS', {})
+                                    if delta_btts:
+                                        st.write("**BTTS Deltas:**")
+                                        st.write(f"  Yes: {delta_btts.get('delta_yes', 0):+.2f}")
+                                        st.write(f"  No: {delta_btts.get('delta_no', 0):+.2f}")
+
+                                # Show Poisson xG for comparison
+                                st.markdown("**Poisson xG Estimates**")
+                                st.write(f"  Home: {s.get('xg_home', 0):.2f}")
+                                st.write(f"  Away: {s.get('xg_away', 0):.2f}")
+                else:
+                    st.info("No ML predictions match your filters.")
 
     elif app_mode == "Corner Predictions":
         st.header("Corner Predictions")

@@ -217,6 +217,14 @@ def load_historical_matches(data_dir: str = DATA_DIR, subfolder: str = OLD_CSV_S
             # heuristic: season historical files contain _data_ or end with dataset.csv; skip league_data_ cached tables
             if lf.endswith('.csv') and ('_data_' in lf or 'dataset' in lf) and not lf.startswith('league_data_'):
                 files.append(os.path.join(archive_dir, f))
+    # Also include recent season CSVs from football-data directory
+    football_data_dir = os.path.join(os.path.dirname(data_dir), 'football-data')
+    if os.path.isdir(football_data_dir):
+        for f in os.listdir(football_data_dir):
+            lf = f.lower()
+            # Only include CSVs with season/year or league code (e.g., E0_2324.csv)
+            if lf.endswith('.csv') and (lf.startswith('e0') or lf.startswith('d1') or lf.startswith('f1') or lf.startswith('i1') or lf.startswith('n1') or lf.startswith('sp1')):
+                files.append(os.path.join(football_data_dir, f))
     if not files:
         return pd.DataFrame()
     dfs = []
@@ -237,8 +245,17 @@ def load_historical_matches(data_dir: str = DATA_DIR, subfolder: str = OLD_CSV_S
                 if lc == 'date' and c != 'Date':
                     rename_map[c] = 'Date'
             df = df.rename(columns=rename_map)
-            if set(['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']).issubset(df.columns):
-                dfs.append(df[['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']])
+            # Keep essential columns plus advanced stats if available
+            essential_cols = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']
+            advanced_stats_cols = ['HS', 'AS', 'HST', 'AST', 'HF', 'AF', 'HC', 'AC']
+
+            if set(essential_cols).issubset(df.columns):
+                # Include advanced stats columns if they exist
+                cols_to_keep = essential_cols.copy()
+                for col in advanced_stats_cols:
+                    if col in df.columns:
+                        cols_to_keep.append(col)
+                dfs.append(df[cols_to_keep])
         except Exception:
             continue
     if not dfs:
@@ -872,6 +889,8 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
             home, away = s['home'], s['away']
             feat_row_dict = build_match_feature_row(ml_feature_df, home, away)
             feature_vector = np.array([feat_row_dict[c] for c in TRAIN_FEATURE_COLUMNS], dtype=float).reshape(1,-1)
+            # Log feature vector for debugging
+            logging.info(f"ML features for {home} vs {away}: {feature_vector}")
             ml_pred = predict_match(ml_models, feature_vector)
             # Recompute baseline markets directly from xG (avoids reconstructing matrix from dict)
             mat = score_probability_matrix(s['xg_home'], s['xg_away'], max_goals=6)
