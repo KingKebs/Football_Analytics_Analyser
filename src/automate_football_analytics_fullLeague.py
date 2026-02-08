@@ -31,6 +31,9 @@ import difflib
 from data_file_utils import ensure_dirs_for_writing
 import time
 from multiprocessing.dummy import Pool as ThreadPool
+import sys
+from io import StringIO
+from contextlib import redirect_stdout
 
 
 # ML imports (lazy inside functions to avoid mandatory dependency if ML not used)
@@ -926,6 +929,7 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
         print(f"- Legs ({p['size']}): {p['legs']}")
         print(f"  Prob: {Colors.GREEN}{p['probability']*100:.2f}%{Colors.RESET}, Odds: {Colors.MAGENTA}{p['decimal_odds']:.2f}{Colors.RESET}, Stake: {Colors.YELLOW}{slip['stake_suggestion']}{Colors.RESET}, Return: {Colors.GREEN}{slip['potential_return']}{Colors.RESET}")
 
+
     # Save results
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
     # Ensure new dirs exist and prefer data/analysis/ for suggestions
@@ -939,6 +943,53 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
     with open(out_path, 'w') as f:
         json.dump(result_data, f, default=lambda o: o.tolist() if isinstance(o, np.ndarray) else str(o))
     logging.info(f"Saved results to: {out_path}")
+
+    # Save formatted output to text file
+    formatted_output_path = out_path.replace('.json', '_formatted.txt')
+    with open(formatted_output_path, 'w') as f:
+        f.write(f"Full League Analysis - {league_code}\n")
+        f.write(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+        f.write(f"{'=' * 60}\n\n")
+
+        # Write the formatted suggestions
+        f.write(f"📊 Full League Match Suggestions for {league_code}:\n\n")
+        for i, s in enumerate(suggestions, 1):
+            home, away = s['home'], s['away']
+            f.write(f"Match {i}: {home} v {away}\n")
+            f.write(f"  Estimated xG: {s['xg_home']:.2f} - {s['xg_away']:.2f}\n")
+            if s['picks']:
+                f.write(f"  Suggested Picks:\n")
+                for p in s['picks']:
+                    f.write(f"    {p['market']} {p['selection']}: {p['prob']*100:.1f}% (odds {p['odds']:.2f})\n")
+            else:
+                f.write(f"  No high-confidence picks available\n")
+            if 'ml_prediction' in s:
+                mp = s['ml_prediction']
+                comp = s.get('ml_vs_poisson', {})
+                # Compute ML Double Chance probabilities from ML 1X2 probs if available
+                if all(k in mp for k in ['prob_1x2_home','prob_1x2_draw','prob_1x2_away']):
+                    pH_ml = mp['prob_1x2_home']; pD_ml = mp['prob_1x2_draw']; pA_ml = mp['prob_1x2_away']
+                    f.write(f"  ML DC probs: 1X={pH_ml+pD_ml:.2f} X2={pD_ml+pA_ml:.2f} 12={pH_ml+pA_ml:.2f}\n")
+                f.write(f"  ML Total Goals: {mp.get('pred_total_goals',0):.2f} (model {mp.get('pred_total_goals_model','-')})\n")
+                f.write(f"  ML 1X2 probs: H={mp.get('prob_1x2_home',0):.2f} D={mp.get('prob_1x2_draw',0):.2f} A={mp.get('prob_1x2_away',0):.2f} (model {mp.get('model_1x2','-')})\n")
+                f.write(f"  ML BTTS probs: Yes={mp.get('prob_btts_yes',0):.2f} No={mp.get('prob_btts_no',0):.2f} (model {mp.get('model_btts','-')})\n")
+                if comp:
+                    c1 = comp.get('1X2', {})
+                    if c1:
+                        f.write(f"    Δ1X2: H={c1.get('delta_home',0):+.2f} D={c1.get('delta_draw',0):+.2f} A={c1.get('delta_away',0):+.2f}\n")
+                    cb = comp.get('BTTS', {})
+                    if cb:
+                        f.write(f"    ΔBTTS: Yes={cb.get('delta_yes',0):+.2f} No={cb.get('delta_no',0):+.2f}\n")
+            f.write(f"\n")
+
+        f.write(f"\n🎲 Top Favorable Parlays:\n")
+        for p in favorable_parlays:
+            slip = format_bet_slip(p, bankroll=bankroll)
+            f.write(f"- Legs ({p['size']}): {p['legs']}\n")
+            f.write(f"  Prob: {p['probability']*100:.2f}%, Odds: {p['decimal_odds']:.2f}, Stake: {slip['stake_suggestion']}, Return: {slip['potential_return']}\n")
+
+    logging.info(f"Saved formatted output to: {formatted_output_path}")
+
 
     # Return results if requested (for cross-league processing)
     if return_results:
@@ -994,9 +1045,9 @@ def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None
                 dc_allow_multiple=dc_allow_multiple,
                 ml_models_shared=shared_ml_models,
                 ml_feature_df_shared=shared_ml_feature_df,
-                return_results=use_parsed_all  # Return results for cross-league processing
+                return_results=True  # Always return results for multi-league processing
              )
-            if use_parsed_all and result:
+            if result:
                 all_league_suggestions[league_code] = result.get('suggestions', [])
                 league_results[league_code] = result
         finally:
@@ -1025,11 +1076,211 @@ def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None
     if use_parsed_all and all_league_suggestions:
         _generate_cross_league_parlays(all_league_suggestions, league_results, bankroll, leagues)
 
+    # Create consolidated file with all leagues' predictions
+    if len(leagues) > 1 and league_results:
+        _create_consolidated_output(league_results, leagues, bankroll)
+
     total_elapsed = time.perf_counter() - start_all
     logging.info("Per-league timings: " + ', '.join(f"{k}={v:.2f}s" for k,v in league_times.items()))
     logging.info(f"Total full-league processing time: {total_elapsed:.2f}s")
 
     return total_elapsed
+
+
+def _create_consolidated_output(league_results: Dict[str, Dict], leagues: List[str], bankroll: float):
+    """Create a consolidated file containing all leagues' predictions in one JSON and formatted text file."""
+
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    fixtures_date = datetime.now().strftime('%Y%m%d')
+
+    ensure_dirs_for_writing()
+    out_dir = os.path.join('data', 'analysis')
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Create simplified, decision-focused data structure
+    consolidated_data = {
+        'generated_at': datetime.now().isoformat(),
+        'fixtures_date': fixtures_date,
+        'total_leagues': len(leagues),
+        'leagues_processed': leagues,
+        'matches': {},  # Simplified match data by league
+        'summary': {
+            'total_matches': 0,
+            'total_picks': 0,
+            'by_league': {},
+            'by_market': {}
+        }
+    }
+
+    all_parlays = []
+    market_summary = {}
+
+    # Process each league's results into simplified format
+    for league_code in leagues:
+        if league_code in league_results:
+            result = league_results[league_code]
+            suggestions = result.get('suggestions', [])
+            parlays = result.get('favorable_parlays', [])
+
+            # Create simplified match data for JSON
+            simplified_matches = []
+            for s in suggestions:
+                # Extract only the key decision-making information
+                match_data = {
+                    'match': f"{s['home']} v {s['away']}",
+                    'estimated_xg': f"{s['xg_home']:.2f} - {s['xg_away']:.2f}",
+                    'suggested_picks': []
+                }
+
+                # Add picks with clean format
+                for p in s.get('picks', []):
+                    match_data['suggested_picks'].append({
+                        'market': p['market'],
+                        'selection': p['selection'],
+                        'probability': f"{p['prob']*100:.1f}%",
+                        'odds': f"{p['odds']:.2f}"
+                    })
+
+                # Add ML predictions if available
+                if 'ml_prediction' in s:
+                    mp = s['ml_prediction']
+                    match_data['ml_predictions'] = {
+                        'total_goals': f"{mp.get('pred_total_goals', 0):.2f}",
+                        'model': mp.get('pred_total_goals_model', '-'),
+                        'h_d_a_probs': f"H={mp.get('prob_1x2_home', 0):.2f} D={mp.get('prob_1x2_draw', 0):.2f} A={mp.get('prob_1x2_away', 0):.2f}",
+                        'btts_probs': f"Yes={mp.get('prob_btts_yes', 0):.2f} No={mp.get('prob_btts_no', 0):.2f}"
+                    }
+
+                    # Add DC probs
+                    if all(k in mp for k in ['prob_1x2_home','prob_1x2_draw','prob_1x2_away']):
+                        pH_ml = mp['prob_1x2_home']; pD_ml = mp['prob_1x2_draw']; pA_ml = mp['prob_1x2_away']
+                        match_data['ml_predictions']['dc_probs'] = f"1X={pH_ml+pD_ml:.2f} X2={pD_ml+pA_ml:.2f} 12={pH_ml+pA_ml:.2f}"
+
+                simplified_matches.append(match_data)
+
+            consolidated_data['matches'][league_code] = simplified_matches
+            all_parlays.extend(parlays)
+
+            # Calculate league summary
+            league_picks = sum(len(s.get('picks', [])) for s in suggestions)
+            consolidated_data['summary']['by_league'][league_code] = {
+                'matches': len(suggestions),
+                'picks': league_picks,
+                'avg_confidence': sum(
+                    p['prob'] for s in suggestions for p in s.get('picks', [])
+                ) / league_picks if league_picks > 0 else 0
+            }
+
+            consolidated_data['summary']['total_matches'] += len(suggestions)
+            consolidated_data['summary']['total_picks'] += league_picks
+
+            # Aggregate market data
+            for suggestion in suggestions:
+                for pick in suggestion.get('picks', []):
+                    market = pick['market']
+                    if market not in market_summary:
+                        market_summary[market] = []
+                    market_summary[market].append(pick)
+
+    # Calculate market summary
+    for market, picks in market_summary.items():
+        consolidated_data['summary']['by_market'][market] = {
+            'total_picks': len(picks),
+            'avg_confidence': sum(p['prob'] for p in picks) / len(picks) if picks else 0,
+            'high_confidence_picks': len([p for p in picks if p['prob'] >= 0.7])
+        }
+
+    # Save simplified consolidated JSON
+    json_path = os.path.join(out_dir, f'consolidated_full_league_{fixtures_date}_{timestamp}.json')
+    with open(json_path, 'w') as f:
+        json.dump(consolidated_data, f, indent=2, default=lambda o: o.tolist() if isinstance(o, np.ndarray) else str(o))
+
+    logging.info(f"Saved consolidated JSON to: {json_path}")
+
+    # Create consolidated formatted text file
+    txt_path = os.path.join(out_dir, f'consolidated_full_league_{fixtures_date}_{timestamp}_formatted.txt')
+    with open(txt_path, 'w') as f:
+        f.write(f"Consolidated Full League Analysis - All Leagues\n")
+        f.write(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+        f.write(f"Leagues Processed: {', '.join(leagues)}\n")
+        f.write(f"{'=' * 80}\n\n")
+
+        f.write(f"📊 SUMMARY:\n")
+        f.write(f"Total Leagues: {consolidated_data['total_leagues']}\n")
+        f.write(f"Total Matches: {consolidated_data['summary']['total_matches']}\n")
+        f.write(f"Total Picks: {consolidated_data['summary']['total_picks']}\n\n")
+
+        f.write(f"📈 BY MARKET:\n")
+        for market, stats in consolidated_data['summary']['by_market'].items():
+            f.write(f"  {market}: {stats['total_picks']} picks (avg confidence: {stats['avg_confidence']:.1%})\n")
+        f.write(f"\n")
+
+        f.write(f"🏆 BY LEAGUE:\n")
+        for league, stats in consolidated_data['summary']['by_league'].items():
+            f.write(f"  {league}: {stats['matches']} matches, {stats['picks']} picks (avg confidence: {stats['avg_confidence']:.1%})\n")
+        f.write(f"\n")
+
+        # Write all league suggestions in the clean format you want
+        for league_code in leagues:
+            if league_code in league_results:
+                result = league_results[league_code]
+                suggestions = result.get('suggestions', [])
+                if suggestions:
+                    f.write(f"{'=' * 80}\n")
+                    f.write(f"📊 Full League Match Suggestions for {league_code}:\n\n")
+
+                    for i, s in enumerate(suggestions, 1):
+                        home, away = s['home'], s['away']
+                        f.write(f"Match {i}: {home} v {away}\n")
+                        f.write(f"  Estimated xG: {s['xg_home']:.2f} - {s['xg_away']:.2f}\n")
+
+                        if s.get('picks'):
+                            f.write(f"  Suggested Picks:\n")
+                            for p in s['picks']:
+                                f.write(f"    {p['market']} {p['selection']}: {p['prob']*100:.1f}% (odds {p['odds']:.2f})\n")
+                        else:
+                            f.write(f"  No high-confidence picks available\n")
+
+                        if 'ml_prediction' in s:
+                            mp = s['ml_prediction']
+                            comp = s.get('ml_vs_poisson', {})
+                            # ML DC probs
+                            if all(k in mp for k in ['prob_1x2_home','prob_1x2_draw','prob_1x2_away']):
+                                pH_ml = mp['prob_1x2_home']; pD_ml = mp['prob_1x2_draw']; pA_ml = mp['prob_1x2_away']
+                                f.write(f"  ML DC probs: 1X={pH_ml+pD_ml:.2f} X2={pD_ml+pA_ml:.2f} 12={pH_ml+pA_ml:.2f}\n")
+                            f.write(f"  ML Total Goals: {mp.get('pred_total_goals',0):.2f} (model {mp.get('pred_total_goals_model','-')})\n")
+                            f.write(f"  ML 1X2 probs: H={mp.get('prob_1x2_home',0):.2f} D={mp.get('prob_1x2_draw',0):.2f} A={mp.get('prob_1x2_away',0):.2f} (model {mp.get('model_1x2','-')})\n")
+                            f.write(f"  ML BTTS probs: Yes={mp.get('prob_btts_yes',0):.2f} No={mp.get('prob_btts_no',0):.2f} (model {mp.get('model_btts','-')})\n")
+                            if comp:
+                                c1 = comp.get('1X2', {})
+                                if c1:
+                                    f.write(f"    Δ1X2: H={c1.get('delta_home',0):+.2f} D={c1.get('delta_draw',0):+.2f} A={c1.get('delta_away',0):+.2f}\n")
+                                cb = comp.get('BTTS', {})
+                                if cb:
+                                    f.write(f"    ΔBTTS: Yes={cb.get('delta_yes',0):+.2f} No={cb.get('delta_no',0):+.2f}\n")
+                        f.write(f"\n")
+
+        # Add consolidated parlays section
+        if all_parlays:
+            f.write(f"{'=' * 80}\n")
+            f.write(f"🎲 Top Consolidated Cross-League Parlays:\n\n")
+            for i, p in enumerate(all_parlays[:10], 1):
+                slip = format_bet_slip(p, bankroll=bankroll)
+                f.write(f"{i}. Legs ({p['size']}): {', '.join(p['legs'])}\n")
+                f.write(f"   Prob: {p['probability']*100:.1f}%, Odds: {p['decimal_odds']:.2f}, Stake: {slip['stake_suggestion']}, Return: {slip['potential_return']}\n")
+                if 'leagues_involved' in p:
+                    f.write(f"   Leagues: {', '.join(p['leagues_involved'])}\n")
+                f.write(f"\n")
+
+    logging.info(f"Saved consolidated formatted text to: {txt_path}")
+
+    # Print summary
+    print(f"\n🎯 CONSOLIDATED ANALYSIS COMPLETE!")
+    print(f"📁 JSON File: {json_path}")
+    print(f"📄 Text File: {txt_path}")
+    print(f"📊 Total: {consolidated_data['summary']['total_matches']} matches across {len(leagues)} leagues")
+    print(f"🎲 Total Picks: {consolidated_data['summary']['total_picks']}")
+    print(f"🏆 Leagues: {', '.join(leagues)}")
 
 
 def _generate_cross_league_parlays(all_league_suggestions: Dict[str, List[Dict]], league_results: Dict[str, Dict], bankroll: float, leagues: List[str]):
@@ -1065,7 +1316,7 @@ def _generate_cross_league_parlays(all_league_suggestions: Dict[str, List[Dict]]
         print(f"{i}. Legs ({p['size']}): {', '.join(p['legs'])}")
         print(f"   Prob: {Colors.GREEN}{p['probability']*100:.1f}%{Colors.RESET}, Odds: {Colors.MAGENTA}{p['decimal_odds']:.2f}{Colors.RESET}, Stake: {Colors.YELLOW}{slip['stake_suggestion']}{Colors.RESET}, Return: {Colors.GREEN}{slip['potential_return']}{Colors.RESET}")
         if 'leagues_involved' in p:
-            print(f"   Leagues: {Colors.BLUE}{', '.join(p['leagues_involved'])}{Colors.RESET}")
+            print(f"   Leagues: {', '.join(p['leagues_involved'])}{Colors.RESET}")
 
     # Save comprehensive multi-league summary
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
