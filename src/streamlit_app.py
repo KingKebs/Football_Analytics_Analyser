@@ -32,11 +32,15 @@ def _load_json(path: str):
 
 @st.cache_data(ttl=120)
 def load_latest_parsed_corners():
+    """
+    Load the most recent parsed corners predictions file.
+    Always selects the latest file by modification time for maintainability.
+    """
     corners_dir = 'data/corners'
-    paths = sorted(glob.glob(os.path.join(corners_dir, 'parsed_corners_predictions_*.json')))
+    paths = glob.glob(os.path.join(corners_dir, 'parsed_corners_predictions_*.json'))
     if not paths:
         return None, None
-    latest = paths[-1]
+    latest = max(paths, key=os.path.getmtime)
     return _load_json(latest), latest
 
 # Helper to display dataframes with a stretch/content toggle
@@ -81,55 +85,41 @@ sns.set_palette("husl")
 
 
 def load_latest_full_league_data():
-    """Load all recent full league suggestions data from the same analysis run."""
+    """
+    Load the most recent full league suggestions files for all leagues.
+    Always selects the latest files by modification time for maintainability.
+    """
     data_dir = 'data/analysis'
     candidates = glob.glob(os.path.join(data_dir, 'full_league_suggestions_*.json'))
     if not candidates:
         return None, None
-
-    # Get the most recent file to determine the base timestamp (date + hour-minute)
+    # Get the most recent file by modification time
     latest_file = max(candidates, key=os.path.getmtime)
-    full_timestamp = os.path.basename(latest_file).split('_')[-1].replace('.json', '')
-
-    # Debug: Show what file is being used as latest
-    print(f"DEBUG: Latest file found: {os.path.basename(latest_file)}")
-    print(f"DEBUG: Full timestamp: {full_timestamp}")
-
-    # Extract date and hour-minute from timestamp
-    # Example: 065856 -> use 0658 to match 065840, 065843, 065847, 065850, 065853, 065856
-    if len(full_timestamp) >= 4:  # Format: HHMMSS
-        base_time = full_timestamp[:4]  # HHMM (first 4 chars)
-    else:
-        base_time = full_timestamp
-
-    # Get the date part from the filename (YYYYMMDD)
+    # Extract base pattern (date + hour-minute) from filename
     filename_parts = os.path.basename(latest_file).split('_')
     if len(filename_parts) >= 4:
-        date_part = filename_parts[-2]  # Should be 20251206
-        base_pattern = f"{date_part}_{base_time}"  # 20251206_0658
+        date_part = filename_parts[-2]
+        base_time = filename_parts[-1].replace('.json', '')[:4]
+        base_pattern = f"{date_part}_{base_time}"
     else:
-        base_pattern = base_time
-
-    print(f"DEBUG: Base pattern: {base_pattern}")
-
-    # Find all files from the same analysis run (same date and hour-minute)
+        base_pattern = ''
+    # Find all files from the same run
     same_run_files = [f for f in candidates if base_pattern in os.path.basename(f)]
-    print(f"DEBUG: Found {len(same_run_files)} files from same run")
-
-    # Load all files from the same run
+    # If none found, fallback to just the latest file
+    if not same_run_files:
+        same_run_files = [latest_file]
+    # Load all files
     all_data = []
     all_paths = []
-    for file_path in sorted(same_run_files):
+    for file_path in sorted(same_run_files, key=os.path.getmtime, reverse=True):
         data = _load_json(file_path)
         if data:
-            # Add league info to the data
-            league_code = os.path.basename(file_path).split('_')[3]  # Extract league from filename
+            league_code = os.path.basename(file_path).split('_')[3]
             if isinstance(data, dict):
                 data['league_code'] = league_code
                 data['file_path'] = file_path
             all_data.append(data)
             all_paths.append(file_path)
-
     return all_data, all_paths
 
 
@@ -142,42 +132,42 @@ def load_latest_corner_predictions_data():
     return _load_json(paths[-1])
 
 
+@st.cache_data(ttl=120)
 def load_consolidated_data():
-    """Load the most recent consolidated full league data."""
+    """
+    Load the most recent consolidated full league data file.
+    Always selects the latest file by modification time for maintainability.
+    """
     data_dir = 'data/analysis'
-    paths = sorted(glob.glob(os.path.join(data_dir, 'consolidated_full_league_*.json')))
+    paths = glob.glob(os.path.join(data_dir, 'consolidated_full_league_*.json'))
     if not paths:
         return None, None
-    latest = paths[-1]
+    latest = max(paths, key=os.path.getmtime)
     return _load_json(latest), latest
 
 
+@st.cache_data(ttl=120)
 def load_latest_corners_data():
-    """Load the most recent corners analysis data."""
+    """
+    Load the most recent corners analysis data (correlations, team stats, CSV).
+    Always selects the latest file by modification time for maintainability.
+    """
     corners_dir = 'data/corners'
-
-    # Find latest correlations file
-    corr_paths = sorted(glob.glob(os.path.join(corners_dir, 'corners_correlations_*.json')))
+    corr_paths = glob.glob(os.path.join(corners_dir, 'corners_correlations_*.json'))
     if not corr_paths:
         return None, None, None
-
-    # Load correlations
-    with open(corr_paths[-1], 'r') as f:
+    latest_corr = max(corr_paths, key=os.path.getmtime)
+    with open(latest_corr, 'r') as f:
         correlations = json.load(f)
-
-    # Load team stats
-    team_stats_path = corr_paths[-1].replace('corners_correlations', 'team_stats')
+    team_stats_path = latest_corr.replace('corners_correlations', 'team_stats')
     team_stats = None
     if os.path.exists(team_stats_path):
         with open(team_stats_path, 'r') as f:
             team_stats = json.load(f)
-
-    # Load CSV data
-    csv_path = corr_paths[-1].replace('corners_correlations', 'corners_analysis').replace('.json', '.csv')
+    csv_path = latest_corr.replace('corners_correlations', 'corners_analysis').replace('.json', '.csv')
     df = None
     if os.path.exists(csv_path):
         df = pd.read_csv(csv_path)
-
     return correlations, team_stats, df
 
 
@@ -860,7 +850,7 @@ def main():
 
                                 with col_d:
                                     st.metric("1H Ratio", f"{p.get('pred_1h_ratio_mean', 0)*100:.0f}%")
-                                    st.caption(f"1H: {p.get('pred_1h_corners_mean', 0):.1f} | 2H: {p.get('pred_2h_corners_mean', 0):.1f}")
+                                    st.caption(f"1H: {p.get('pred_1h_corners_mean', 0):.1f} | 2H: {p.get('pred_2h_corners', 0):.1f}")
 
                                 # Market lines if available
                                 total_lines = p.get('total_corner_lines', [])
