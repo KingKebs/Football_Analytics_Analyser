@@ -738,27 +738,63 @@ def main():
                     st.info("No ML predictions match your filters.")
 
     elif app_mode == "Corner Predictions":
-        st.header("Corner Predictions")
+        st.header("⚽ Corner Predictions & Analysis")
 
         # Check for parsed fixture corner predictions first (newest format)
         parsed_data, parsed_path = load_latest_parsed_corners()
 
         if parsed_data:
-            st.subheader("📊 Parsed Fixture Corner Predictions (Dynamic League Detection)")
-            st.caption(f"Latest file: {parsed_path}")
-
+            # Display header info
+            analysis_date = parsed_data.get('date', 'Unknown')
             preds = parsed_data.get('predictions', [])
             skipped = parsed_data.get('skipped', [])
 
-            st.info(f"✅ {len(preds)} predictions generated, {len(skipped)} matches skipped")
+            # Format date nicely
+            if analysis_date and len(analysis_date) == 8:
+                formatted_date = f"{analysis_date[0:4]}-{analysis_date[4:6]}-{analysis_date[6:8]}"
+            else:
+                formatted_date = analysis_date
+
+            st.subheader(f"📊 Latest Corner Analysis - {formatted_date}")
+            st.caption(f"Source: {os.path.basename(parsed_path)}")
+
+            # Summary metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Predictions", len(preds))
+            with col2:
+                leagues_count = len(set([p.get('league_code') for p in preds]))
+                st.metric("Leagues Covered", leagues_count)
+            with col3:
+                avg_total = sum([p.get('pred_total_corners_mean', 0) for p in preds]) / len(preds) if preds else 0
+                st.metric("Avg Total Corners", f"{avg_total:.1f}")
+            with col4:
+                st.metric("Skipped Matches", len(skipped))
 
             if preds:
-                # League selector
-                leagues_in_preds = list(set([p.get('league_code') for p in preds]))
-                selected_leagues = st.multiselect("Filter by leagues", leagues_in_preds, default=leagues_in_preds)
+                st.markdown("---")
+
+                # League selector and filters
+                col_filter1, col_filter2, col_filter3 = st.columns([2, 1, 1])
+                with col_filter1:
+                    leagues_in_preds = sorted(list(set([p.get('league_code') for p in preds])))
+                    selected_leagues = st.multiselect("Filter by leagues", leagues_in_preds, default=leagues_in_preds, key="corner_league_filter")
+                with col_filter2:
+                    min_corners = st.slider("Min total corners", 0, 20, 0, key="corner_min_filter")
+                with col_filter3:
+                    team_search = st.text_input("Search team", "", key="corner_team_filter")
 
                 # Filter predictions
-                filtered_preds = [p for p in preds if p.get('league_code') in selected_leagues]
+                filtered_preds = [
+                    p for p in preds
+                    if p.get('league_code') in selected_leagues
+                    and p.get('pred_total_corners_mean', 0) >= min_corners
+                    and (not team_search or
+                         team_search.lower() in p.get('home_team', '').lower() or
+                         team_search.lower() in p.get('away_team', '').lower())
+                ]
+
+                st.info(f"📋 Showing {len(filtered_preds)} of {len(preds)} predictions")
 
                 # Build dataframe of key metrics
                 rows = []
@@ -767,34 +803,128 @@ def main():
                     rows.append({
                         'League': p.get('league_code'),
                         'Match': f"{p.get('home_team')} vs {p.get('away_team')}",
-                        'ExpHome': f"{p.get('expected_home_corners', 0):.1f}",
-                        'ExpAway': f"{p.get('expected_away_corners', 0):.1f}",
-                        'TotalMean': f"{p.get('pred_total_corners_mean', 0):.1f}",
-                        'Range': f"{rng[0]:.1f}-{rng[1]:.1f}" if rng[0] and rng[1] else "N/A",
+                        'Home': f"{p.get('expected_home_corners', 0):.1f}",
+                        'Away': f"{p.get('expected_away_corners', 0):.1f}",
+                        'Total': f"{p.get('pred_total_corners_mean', 0):.1f}",
+                        'Range': f"{rng[0]:.1f}-{rng[1]:.1f}" if rng[0] and rng[1] else f"{p.get('pred_total_corners_mean', 0):.1f}",
                         '1H%': f"{p.get('pred_1h_ratio_mean', 0)*100:.0f}%",
-                        '1H Corners': f"{p.get('pred_1h_corners_mean', 0):.1f}",
-                        '2H Corners': f"{p.get('pred_2h_corners_mean', 0):.1f}",
-                        'ML Used': "✅" if p.get('ml_used', False) else "❌"
+                        '1H': f"{p.get('pred_1h_corners_mean', 0):.1f}",
+                        '2H': f"{p.get('pred_2h_corners_mean', 0):.1f}",
+                        'ML': "✅" if p.get('ml_used', False) else "📊"
                     })
 
                 if rows:
                     df_parsed = pd.DataFrame(rows)
-                    # Sort by league then total mean desc
-                    df_parsed = df_parsed.sort_values(['League','TotalMean'], ascending=[True, False])
+                    # Sort by league then total desc
+                    df_parsed = df_parsed.sort_values(['League','Total'], ascending=[True, False])
+
+                    st.subheader("📈 Corner Predictions Table")
                     show_dataframe(df_parsed, stretch=stretch_charts)
+
+                    # Detailed match cards
+                    st.subheader("🎯 Detailed Match Analysis")
+
+                    # Group by league for better organization
+                    preds_by_league = {}
+                    for p in filtered_preds:
+                        league = p.get('league_code', 'Unknown')
+                        if league not in preds_by_league:
+                            preds_by_league[league] = []
+                        preds_by_league[league].append(p)
+
+                    for league in sorted(preds_by_league.keys()):
+                        league_preds = preds_by_league[league]
+                        with st.expander(f"🏆 {league} - {len(league_preds)} matches", expanded=(len(selected_leagues) == 1)):
+                            for p in league_preds:
+                                home = p.get('home_team', 'Unknown')
+                                away = p.get('away_team', 'Unknown')
+
+                                st.markdown(f"### {home} vs {away}")
+
+                                # Main metrics in columns
+                                col_a, col_b, col_c, col_d = st.columns(4)
+
+                                with col_a:
+                                    st.metric("Total Corners", f"{p.get('pred_total_corners_mean', 0):.1f}")
+                                    rng = p.get('pred_total_corners_range') or [None, None]
+                                    if rng[0] and rng[1]:
+                                        st.caption(f"Range: {rng[0]:.1f} - {rng[1]:.1f}")
+
+                                with col_b:
+                                    st.metric("Home Corners", f"{p.get('expected_home_corners', 0):.1f}")
+                                    st.caption("Expected")
+
+                                with col_c:
+                                    st.metric("Away Corners", f"{p.get('expected_away_corners', 0):.1f}")
+                                    st.caption("Expected")
+
+                                with col_d:
+                                    st.metric("1H Ratio", f"{p.get('pred_1h_ratio_mean', 0)*100:.0f}%")
+                                    st.caption(f"1H: {p.get('pred_1h_corners_mean', 0):.1f} | 2H: {p.get('pred_2h_corners_mean', 0):.1f}")
+
+                                # Market lines if available
+                                total_lines = p.get('total_corner_lines', [])
+                                if total_lines:
+                                    st.markdown("**📊 Total Corners Market Lines:**")
+                                    line_cols = st.columns(len(total_lines) if len(total_lines) <= 4 else 4)
+                                    for idx, line in enumerate(total_lines[:4]):
+                                        with line_cols[idx]:
+                                            line_val = line.get('line', 'N/A')
+                                            p_over = line.get('p_over', 0) * 100
+                                            p_under = line.get('p_under', 0) * 100
+                                            rec = line.get('recommendation', 'N/A')
+
+                                            if rec and rec != 'N/A':
+                                                st.success(f"**O/U {line_val}**")
+                                                st.write(f"{rec}")
+                                                st.caption(f"Over: {p_over:.0f}% | Under: {p_under:.0f}%")
+                                            else:
+                                                st.info(f"**O/U {line_val}**")
+                                                st.caption(f"Over: {p_over:.0f}% | Under: {p_under:.0f}%")
+
+                                # First half lines if available
+                                fh_lines = p.get('first_half_lines', [])
+                                if fh_lines:
+                                    st.markdown("**⏱️ First Half Corner Lines:**")
+                                    fh_cols = st.columns(len(fh_lines) if len(fh_lines) <= 4 else 4)
+                                    for idx, line in enumerate(fh_lines[:4]):
+                                        with fh_cols[idx]:
+                                            line_val = line.get('line', 'N/A')
+                                            p_over = line.get('p_over', 0) * 100
+                                            rec = line.get('recommendation', 'N/A')
+
+                                            if rec and rec != 'N/A':
+                                                st.success(f"**1H {line_val}**")
+                                                st.write(f"{rec}")
+                                                st.caption(f"Over: {p_over:.0f}%")
+                                            else:
+                                                st.info(f"**1H {line_val}**")
+                                                st.caption(f"Over: {p_over:.0f}%")
+
+                                st.markdown("---")
 
                     # Show skipped matches summary
                     if skipped:
-                        with st.expander(f"⚠️ {len(skipped)} matches skipped"):
+                        with st.expander(f"⚠️ {len(skipped)} matches skipped - View Details"):
                             skip_reasons = {}
                             for s in skipped:
                                 reason = s.get('reason', 'unknown')
                                 skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
 
+                            st.markdown("**Skip Reasons:**")
                             for reason, count in skip_reasons.items():
-                                st.write(f"• {reason}: {count} matches")
+                                st.write(f"• **{reason}**: {count} matches")
+
+                            # Show sample skipped matches
+                            if len(skipped) > 0:
+                                st.markdown("**Sample Skipped Matches:**")
+                                for s in skipped[:5]:
+                                    home = s.get('home_team', 'Unknown')
+                                    away = s.get('away_team', 'Unknown')
+                                    reason = s.get('reason', 'unknown')
+                                    st.caption(f"  - {home} vs {away} ({reason})")
                 else:
-                    st.info("No predictions match your league filter.")
+                    st.info("No predictions match your filters.")
             else:
                 st.warning("No predictions found in the parsed file.")
 
