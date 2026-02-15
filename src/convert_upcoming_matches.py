@@ -53,6 +53,8 @@ import re
 LEAGUE_MAP = {
     'Premier League': 'E0',
     'Championship': 'E1',
+    'League One': 'E2',
+    'League Two': 'E3',
     'Ligue 1': 'F1',
     'Ligue 2': 'F2',
     'Bundesliga': 'D1',
@@ -97,10 +99,11 @@ def convert(data, out_date: str) -> list:
             league_code = fx.get('league') or ''
             competition = fx.get('competition') or ''
             status = fx.get('status') or 'Scheduled'
+            match_date = fx.get('date') or out_date
             if not home or not away:
                 continue
             fixtures_out.append({
-                'date': out_date,
+                'date': match_date,
                 'league': league_code,
                 'competition': competition,
                 'time': time,
@@ -116,7 +119,7 @@ def convert(data, out_date: str) -> list:
         for competition, payload in comps.items():
             if not isinstance(payload, dict):
                 continue
-            fx_list = payload.get('Fixtures') or payload.get('Matches') or []
+            fx_list = payload.get('Fixtures') or payload.get('Matches') or payload.get('matches') or []
             if not isinstance(fx_list, list):
                 continue
             league_code = LEAGUE_MAP.get(competition) or COUNTRY_FALLBACK.get(country.upper(), '')
@@ -124,10 +127,11 @@ def convert(data, out_date: str) -> list:
                 home = fx.get('home') or fx.get('Home') or ''
                 away = fx.get('away') or fx.get('Away') or ''
                 time = normalize_time(fx.get('time') or fx.get('Time') or '')
+                match_date = fx.get('date') or out_date
                 if not home or not away:
                     continue
                 fixtures_out.append({
-                    'date': out_date,
+                    'date': match_date,
                     'league': league_code,
                     'competition': competition,
                     'time': time,

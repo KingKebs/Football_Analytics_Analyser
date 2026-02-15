@@ -1,6 +1,6 @@
 # Football Analytics Analyser - Quick Reference Guide
 
-**Last Updated:** December 14, 2025
+**Last Updated:** February 10, 2026
 
 ## 🆕 **NEW FEATURE: Dynamic League Extraction**
 When using `--use-parsed-all` with `--leagues ALL` (or no `--leagues` specified), the system now automatically detects and processes only the leagues present in your parsed fixtures file. This eliminates the "ALL.csv not found" error and makes the system much more resource-efficient.
@@ -17,9 +17,34 @@ python cli.py --task full-league --use-parsed-all --fixtures-date 20251206 --min
 ## 🚀 Quick Start
 
 ### First Time Setup
+
+**⚠️ IMPORTANT: Virtual Environment Required (macOS/Linux)**
+
+Your system Python is externally managed. You MUST use a virtual environment:
+
 ```bash
+# Navigate to project directory
+cd /path/to/Football_Analytics_Analyser
+
+# Create virtual environment (first time only)
+python3 -m venv venv
+
+# Activate virtual environment (required for every new terminal session)
+source venv/bin/activate
+
 # Install dependencies
 pip install -r requirements.txt
+
+# To deactivate when done
+deactivate
+```
+
+**For every new terminal session:**
+```bash
+source venv/bin/activate
+```
+
+### Download and Validate Data
 
 # Download data for a league
 python cli.py --task download --leagues E0 --season AUTO
@@ -806,13 +831,15 @@ data/analysis/full_league_suggestions_D1_20251206_123458.json
 
 ## 📅 Version History
 
-### v2.2.0 (December 14, 2025)
+### v2.2.0 (February 10, 2026)
 - ✅ **NEW:** Niche Markets Analysis (Odd/Even, Highest Scoring Half)
 - ✅ **NEW:** Strategic Parlay Optimizer for 2-slip combinations
 - ✅ **NEW:** Lower League Priority Analysis (League One, LaLiga2, Greek Super League)
 - ✅ **NEW:** Combined Analysis Workflows (Sequential & Parallel execution)
 - ✅ **ADDED:** Cross-league parlay recommendations with correlation risk assessment
 - ✅ **ENHANCED:** Quick Reference Guide with comprehensive workflow examples
+- ✅ **FIXED:** Output date and league handling - correct fixtures date used for output file naming
+- ✅ **FIXED:** Streamlit UI now displays only the latest file per league and the latest consolidated file
 
 ### v2.1.0 (December 6, 2025)
 - ✅ **NEW:** Dynamic League Extraction for `--use-parsed-all`
@@ -830,3 +857,38 @@ data/analysis/full_league_suggestions_D1_20251206_123458.json
 ---
 
 *For more detailed documentation, see the full README.md and other files in ReadMeDocs/*
+
+## 🛠️ Streamlit File Sourcing & Maintainability
+
+### How Streamlit Loads Latest Files
+- The Streamlit app always loads the most recent analysis files for each section (full league suggestions, consolidated, corners) based on file modification time.
+- It uses robust glob patterns and selects the latest file using `os.path.getmtime`, not just filename order.
+- This ensures the dashboard always shows the freshest results, regardless of filename or timestamp format.
+
+**Example:**
+- Full league suggestions: Loads all `full_league_suggestions_*.json` files from the latest analysis run.
+- Corner predictions: Loads the latest `parsed_corners_predictions_*.json` file.
+- Consolidated output: Loads the latest `consolidated_full_league_*.json` file.
+
+### How to Maintain/Update File Loading Logic
+- If new file formats or directories are added, update the glob pattern in the relevant function (e.g., `glob.glob(os.path.join(data_dir, 'new_pattern*.json'))`).
+- To change which files are shown, adjust the filtering logic in the file loading function (e.g., filter by league, date, or run ID).
+- Always use `max(paths, key=os.path.getmtime)` to select the latest file for robustness.
+- Add comments to file loading functions to clarify their purpose and update instructions.
+
+### Best Practices
+- Keep analysis output files in the same directory (`data/analysis` or `data/corners`) for easy access.
+- Use consistent filename patterns for new outputs.
+- Test Streamlit after adding new file types to ensure the dashboard updates automatically.
+- If you add new analysis types, create a new file loading function using the same pattern.
+
+## 🖥️ Streamlit UI: Full League Suggestions File Selection
+
+- The "Full League Suggestions" view now lists all available per-league and consolidated files in `data/analysis/`.
+- You can select any file to view its contents:
+  - Per-league files: Show match suggestions for that league.
+  - Consolidated files: Show summary and allow filtering by league.
+- All files are sorted by modification time (most recent first).
+- The "View All Files" expander lists every file found, for transparency.
+- This improves maintainability and makes it easy to review historical runs or compare outputs.
+

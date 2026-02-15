@@ -387,15 +387,20 @@ TEAM_ALIASES = {
     "man city": "Man City",
     "man utd": "Man United",
     "manchester united": "Man United",
-    "manchester city": "Man City",
+    "manchester utd": "Man United",
+    "manchester utd.": "Man United",
+    "west ham": "West Ham",
     "spurs": "Tottenham",
     "wolves": "Wolves",
-    "west ham": "West Ham",
-    "brighton": "Brighton",
-    "aston villa": "Aston Villa",
+    "west ham united": "West Ham",
     # Spain examples (extendable)
     "ath bilbao": "Ath Bilbao",
     "real madrid": "Real Madrid",
+    # League One / E2 common variants
+    "peterborough": "Peterboro",
+    # League Two / E3 common variants
+    "crawley": "Crawley Town",
+    "cambridge utd": "Cambridge",
     # Italy, Germany etc can be added similarly
 }
 
@@ -566,36 +571,33 @@ def select_favorable_parlays(parlays: List[Dict], min_prob: float = 0.5, min_odd
     return sorted(favorable, key=lambda x: (x['probability'], x['decimal_odds']), reverse=True)[:10]
 
 
-# Ensure parse_input_log defined early
-try:
-    parse_input_log
-except NameError:
-    def parse_input_log(path: str) -> pd.DataFrame:
-        if not path or not os.path.exists(path):
-            return pd.DataFrame()
-        try:
-            if path.lower().endswith('.csv'):
-                df = pd.read_csv(path)
-            else:
-                df = pd.read_json(path)
-        except Exception:
-            return pd.DataFrame()
-        rename_map = {}
-        for c in df.columns:
-            lc = c.lower()
-            if lc in ('hometeam','home_team','home'): rename_map[c] = 'HomeTeam'
-            elif lc in ('awayteam','away_team','away'): rename_map[c] = 'AwayTeam'
-            elif lc == 'date': rename_map[c] = 'Date'
-        if rename_map:
-            df = df.rename(columns=rename_map)
-        if 'HomeTeam' not in df.columns or 'AwayTeam' not in df.columns:
-            return pd.DataFrame()
-        if 'Date' in df.columns:
-            try: df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-            except Exception: pass
+def parse_input_log(path: str) -> pd.DataFrame:
+    """Parse input log file (CSV or JSON) and return normalized fixtures DataFrame."""
+    if not path or not os.path.exists(path):
+        return pd.DataFrame()
+    try:
+        if path.lower().endswith('.csv'):
+            df = pd.read_csv(path)
         else:
-            df['Date'] = pd.Timestamp.now()
-        return df[['Date','HomeTeam','AwayTeam']]
+            df = pd.read_json(path)
+    except Exception:
+        return pd.DataFrame()
+    rename_map = {}
+    for c in df.columns:
+        lc = c.lower()
+        if lc in ('hometeam','home_team','home'): rename_map[c] = 'HomeTeam'
+        elif lc in ('awayteam','away_team','away'): rename_map[c] = 'AwayTeam'
+        elif lc == 'date': rename_map[c] = 'Date'
+    if rename_map:
+        df = df.rename(columns=rename_map)
+    if 'HomeTeam' not in df.columns or 'AwayTeam' not in df.columns:
+        return pd.DataFrame()
+    if 'Date' in df.columns:
+        try: df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        except Exception: pass
+    else:
+        df['Date'] = pd.Timestamp.now()
+    return df[['Date','HomeTeam','AwayTeam']]
 
 
 def analyze_parsed_fixtures_all(parsed_df: pd.DataFrame, min_confidence: float, rating_models: Dict, history_df: pd.DataFrame, rating_model_config: Dict,
@@ -792,25 +794,15 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
     # --- Source fixtures logic with input log override ---
     parsed_fixtures = load_parsed_fixtures(date_str=fixtures_date)
 
-    # Add league column if missing for proper filtering in cross-league mode
-    if not parsed_fixtures.empty and 'league' not in parsed_fixtures.columns:
-        # Normalize / populate a lowercase 'league' column robustly (case-insensitive)
-        # 1) If a capitalized 'League' exists, use it directly
-        if 'League' in parsed_fixtures.columns:
-            parsed_fixtures['league'] = parsed_fixtures['League'].astype(str).str.strip()
-        else:
-            # 2) Find any column named 'competition' case-insensitively and map it using COMPETITION_TO_LEAGUE
-            comp_col = next((c for c in parsed_fixtures.columns if str(c).lower() == 'competition'), None)
-            if comp_col:
-                # Use the local COMPETITION_TO_LEAGUE mapping defined in this module for stability
-                parsed_fixtures['league'] = parsed_fixtures[comp_col].map(lambda v: COMPETITION_TO_LEAGUE.get(str(v).strip(), '')).fillna('').astype(str).str.strip()
-            else:
-                # 3) Fallback: if any column named 'league' exists (different casing), use it
-                league_col = next((c for c in parsed_fixtures.columns if str(c).lower() == 'league'), None)
-                if league_col:
-                    parsed_fixtures['league'] = parsed_fixtures[league_col].astype(str).str.strip()
-                else:
-                    parsed_fixtures['league'] = ''
+    # Filter by date if specified (ensures consistency with approval prompt)
+    if fixtures_date and not parsed_fixtures.empty:
+        target_date = f"{fixtures_date[:4]}-{fixtures_date[4:6]}-{fixtures_date[6:8]}"
+        if 'Date' in parsed_fixtures.columns:
+            parsed_fixtures['Date'] = pd.to_datetime(parsed_fixtures['Date'], errors='coerce')
+            parsed_fixtures = parsed_fixtures[parsed_fixtures['Date'].dt.strftime('%Y-%m-%d') == target_date]
+
+    # Note: Pre-analysis approval is now handled at the multi-league level (main_full_league_multiple)
+    # to avoid duplicate prompts when processing multiple leagues
 
     log_df = parse_input_log(input_log) if input_log else pd.DataFrame()
 
@@ -854,7 +846,7 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
                 logging.warning(f"No fixtures found for league {league_code} in parsed data")
         else:
             # Legacy single-league processing
-            suggestions, skipped = analyze_parsed_fixtures_all(parsed_fixtures, min_confidence=min_confidence, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
+            suggestions, skipped = analyze_parsed_fixtures_all(parsed_fixtures, min_confidence=0.0, rating_models=rating_models, history_df=history_df, rating_model_config=rating_model_config,
                                                                enable_double_chance=enable_double_chance, dc_min_prob=dc_min_prob, dc_secondary_threshold=dc_secondary_threshold, dc_allow_multiple=dc_allow_multiple)
             if skipped:
                 logging.info(f"Skipped {len(skipped)} parsed fixtures (team/league inference failures)")
@@ -1029,6 +1021,44 @@ def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None
     if leagues is None:
         leagues = ['E0']
 
+    # Pre-analysis approval step when using parsed fixtures (do once for all leagues)
+    if use_parsed_all:
+        parsed_fixtures = load_parsed_fixtures(date_str=fixtures_date)
+        if not parsed_fixtures.empty:
+            # Filter by date if fixtures_date is provided
+            if fixtures_date:
+                # Convert fixtures_date (YYYYMMDD) to YYYY-MM-DD format for comparison
+                target_date = f"{fixtures_date[:4]}-{fixtures_date[4:6]}-{fixtures_date[6:8]}"
+
+                # Ensure Date column exists and filter
+                if 'Date' in parsed_fixtures.columns:
+                    parsed_fixtures['Date'] = pd.to_datetime(parsed_fixtures['Date'], errors='coerce')
+                    parsed_fixtures = parsed_fixtures[parsed_fixtures['Date'].dt.strftime('%Y-%m-%d') == target_date]
+
+                    if parsed_fixtures.empty:
+                        print(f"\n❌ No fixtures found for date {target_date}")
+                        print("Analysis cancelled - no matches to analyze.")
+                        return 0
+
+            print("\n" + "="*80)
+            print(f"PARSED FIXTURES TO BE ANALYZED - DATE: {target_date if fixtures_date else 'ALL'}")
+            print("="*80)
+            for idx, row in parsed_fixtures.iterrows():
+                league_display = row.get('League', row.get('league', '?'))
+                home_display = row.get('HomeTeam', row.get('home', '?'))
+                away_display = row.get('AwayTeam', row.get('away', '?'))
+                match_date = row.get('Date', '?')
+                if hasattr(match_date, 'strftime'):
+                    match_date = match_date.strftime('%Y-%m-%d')
+                print(f"  {match_date} [{league_display}] {home_display} v {away_display}")
+            print("="*80)
+            print(f"\nTotal: {len(parsed_fixtures)} matches")
+            approve = input("\n✅ Approve these matches for analysis? (y/n): ").strip().lower()
+            if approve != 'y':
+                print("❌ Analysis cancelled by user.")
+                return 0
+            print("✅ Proceeding with analysis...\n")
+
     start_all = time.perf_counter()
     league_times = {}
     all_league_suggestions = {}  # Store suggestions by league for cross-league parlays
@@ -1097,7 +1127,7 @@ def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None
 
     # Create consolidated file with all leagues' predictions
     if len(leagues) > 1 and league_results:
-        _create_consolidated_output(league_results, leagues, bankroll)
+        _create_consolidated_output(league_results, leagues, bankroll, fixtures_date=fixtures_date)
 
     total_elapsed = time.perf_counter() - start_all
     logging.info("Per-league timings: " + ', '.join(f"{k}={v:.2f}s" for k,v in league_times.items()))
@@ -1106,13 +1136,15 @@ def main_full_league_multiple(bankroll: float = 100.0, leagues: List[str] = None
     return total_elapsed
 
 
-def _create_consolidated_output(league_results: Dict[str, Dict], leagues: List[str], bankroll: float):
+def _create_consolidated_output(league_results: Dict[str, Dict], leagues: List[str], bankroll: float, fixtures_date: str = None):
     """Create a consolidated file containing all leagues' predictions in one JSON and formatted text file."""
-
+    from datetime import datetime, timezone
+    import os
+    import json
+    # Use provided fixtures_date if set, else fallback to today
+    if fixtures_date is None:
+        fixtures_date = datetime.now().strftime('%Y%m%d')
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-    fixtures_date = datetime.now().strftime('%Y%m%d')
-
-    ensure_dirs_for_writing()
     out_dir = os.path.join('data', 'analysis')
     os.makedirs(out_dir, exist_ok=True)
 

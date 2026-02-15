@@ -1,5 +1,35 @@
 # Quick Reference: Running Predictions with Steps 1-4
 
+## 🚀 SETUP: Virtual Environment (Required First Step)
+
+**macOS/Linux users:** Your system Python is externally managed. You MUST use a virtual environment:
+
+```bash
+# Navigate to project directory
+cd /path/to/Football_Analytics_Analyser
+
+# Create virtual environment (if not exists)
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+**For every new terminal session, activate the venv:**
+```bash
+source venv/bin/activate
+```
+
+**To deactivate when done:**
+```bash
+deactivate
+```
+
+---
+
 ## ✅ YOUR SCENARIO: Match Log with E2 & E3 Games
 
 **Your file:** `tmp/corners/251115_match_games.log`

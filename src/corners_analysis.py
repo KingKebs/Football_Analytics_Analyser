@@ -731,13 +731,26 @@ try:
 except NameError:
     def _load_parsed_fixtures(date_str: str = None, data_dir: str = 'data') -> pd.DataFrame:
         date_str = date_str or datetime.now().strftime('%Y%m%d')
-        csv_path = os.path.join(data_dir, f'todays_fixtures_{date_str}.csv'); json_path = os.path.join(data_dir, f'todays_fixtures_{date_str}.json')
-        path = csv_path if os.path.exists(csv_path) else json_path if os.path.exists(json_path) else None
-        if not path:
-            candidates = sorted(list(Path(data_dir).glob('todays_fixtures_*.json')) + list(Path(data_dir).glob('todays_fixtures_*.csv')), key=lambda p: p.stat().st_mtime, reverse=True)
-            path = str(candidates[0]) if candidates else None
-        if not path:
+        # Search in both data/ and data/analysis for the specified date
+        search_dirs = [data_dir, os.path.join(data_dir, 'analysis')]
+        candidates = []
+        for base in search_dirs:
+            csv_path = os.path.join(base, f'todays_fixtures_{date_str}.csv')
+            json_path = os.path.join(base, f'todays_fixtures_{date_str}.json')
+            if os.path.exists(csv_path):
+                candidates.append(csv_path)
+            if os.path.exists(json_path):
+                candidates.append(json_path)
+        # Fallback: most recent fixtures file from either directory
+        if not candidates:
+            for base in search_dirs:
+                paths = list(Path(base).glob('todays_fixtures_*.json')) + list(Path(base).glob('todays_fixtures_*.csv'))
+                if paths:
+                    latest = sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)
+                    candidates.append(str(latest[0]))
+        if not candidates:
             return pd.DataFrame()
+        path = candidates[0]
         try:
             df = pd.read_csv(path) if path.endswith('.csv') else pd.read_json(path)
         except Exception:

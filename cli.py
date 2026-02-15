@@ -170,7 +170,7 @@ class FootballAnalyticsCLI:
 
         # League and season options
         parser.add_argument('--league', default='ALL', help='League code or ALL for all supported leagues [default: ALL]')
-        parser.add_argument('--leagues', help='Comma-separated league codes for batch operations (e.g., E0,SP1,D1)')
+        parser.add_argument('--leagues', help='Comma-separated league codes (e.g., E0,SP1,D1). Auto-detected from parsed fixtures when --use-parsed-all is set.')
         parser.add_argument('--season', default='AUTO', help='Season (e.g., 2024-25) or AUTO for latest [default: AUTO]')
 
         # Converter-specific args
@@ -299,7 +299,43 @@ class FootballAnalyticsCLI:
 
     def task_full_league(self, args):
         """Analyze a full league round for one or more leagues."""
-        leagues_to_run = [league.strip() for league in (args.leagues or args.league).split(',') if league.strip()]
+        # Auto-detect leagues from parsed fixtures when --use-parsed-all is set
+        if args.use_parsed_all and args.fixtures_date:
+            logger.info("Auto-detecting leagues from parsed fixtures...")
+            try:
+                from automate_football_analytics_fullLeague import load_parsed_fixtures
+                import pandas as pd
+
+                parsed_fixtures = load_parsed_fixtures(date_str=args.fixtures_date, data_dir='data')
+                if not parsed_fixtures.empty:
+                    # Filter by date if specified
+                    target_date = f"{args.fixtures_date[:4]}-{args.fixtures_date[4:6]}-{args.fixtures_date[6:8]}"
+                    if 'Date' in parsed_fixtures.columns:
+                        parsed_fixtures['Date'] = pd.to_datetime(parsed_fixtures['Date'], errors='coerce')
+                        parsed_fixtures = parsed_fixtures[parsed_fixtures['Date'].dt.strftime('%Y-%m-%d') == target_date]
+
+                    # Extract unique leagues
+                    league_col = 'League' if 'League' in parsed_fixtures.columns else 'league'
+                    if league_col in parsed_fixtures.columns:
+                        detected_leagues = sorted(parsed_fixtures[league_col].dropna().str.strip().unique().tolist())
+                        if detected_leagues:
+                            logger.info(f"📊 Detected leagues from parsed fixtures: {', '.join(detected_leagues)}")
+                            leagues_to_run = detected_leagues
+                        else:
+                            logger.warning("No leagues detected in parsed fixtures, using provided leagues")
+                            leagues_to_run = [league.strip() for league in (args.leagues or args.league).split(',') if league.strip()]
+                    else:
+                        logger.warning("No league column in parsed fixtures, using provided leagues")
+                        leagues_to_run = [league.strip() for league in (args.leagues or args.league).split(',') if league.strip()]
+                else:
+                    logger.warning(f"No parsed fixtures found for date {args.fixtures_date}, using provided leagues")
+                    leagues_to_run = [league.strip() for league in (args.leagues or args.league).split(',') if league.strip()]
+            except Exception as e:
+                logger.warning(f"Failed to auto-detect leagues: {e}, using provided leagues")
+                leagues_to_run = [league.strip() for league in (args.leagues or args.league).split(',') if league.strip()]
+        else:
+            leagues_to_run = [league.strip() for league in (args.leagues or args.league).split(',') if league.strip()]
+
         logger.info(f"Starting full league analysis for: {', '.join(leagues_to_run)}")
 
         try:

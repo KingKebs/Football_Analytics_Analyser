@@ -377,148 +377,112 @@ def main():
 
     if app_mode == "Full League Suggestions":
         st.header("Full League Match & Parlay Suggestions")
-        if not full_league_data_list:
-            st.warning("No full league suggestion files found in `data/analysis/`")
+        # List only the latest per-league file for each league and the latest consolidated file
+        data_dir = 'data/analysis'
+        per_league_files = glob.glob(os.path.join(data_dir, 'full_league_suggestions_*.json'))
+        consolidated_files = glob.glob(os.path.join(data_dir, 'consolidated_full_league_*.json'))
+        # Group per-league files by league code and select the most recent
+        latest_per_league = {}
+        for f in per_league_files:
+            fname = os.path.basename(f)
+            parts = fname.split('_')
+            if len(parts) >= 4:
+                league = parts[3]
+                if league not in latest_per_league or os.path.getmtime(f) > os.path.getmtime(latest_per_league[league]):
+                    latest_per_league[league] = f
+        # Get the latest consolidated file
+        latest_consolidated = None
+        if consolidated_files:
+            latest_consolidated = max(consolidated_files, key=os.path.getmtime)
+        # Build file list for selector and expander
+        file_list = list(latest_per_league.values())
+        if latest_consolidated:
+            file_list.append(latest_consolidated)
+        file_list = sorted(file_list, key=os.path.getmtime, reverse=True)
+        if not file_list:
+            st.warning("No full league suggestion files found in `data/analysis/`.")
             st.info("Run the league analysis pipeline to generate suggestions.")
         else:
-            # Display source info for all files from the same run
-            if full_league_paths:
-                latest_path = full_league_paths[0]
-                ts = os.path.basename(latest_path).split('_')[-1].replace('.json','')
-                league_codes = [data.get('league_code', 'Unknown') for data in full_league_data_list if isinstance(data, dict)]
-
-                st.caption(f"Analysis run: {ts} | Leagues: {', '.join(league_codes)} | Files: {len(full_league_paths)}")
-                with st.expander("📁 View all files"):
-                    for path in full_league_paths:
-                        st.text(f"• {path}")
-
-            # Combine all suggestions from all leagues
-            all_suggestions = []
-            all_parlays = []
-
-            # Debug info for parlay loading
-            parlay_debug_info = []
-
-            for data in full_league_data_list:
-                if isinstance(data, dict):
-                    league_code = data.get('league_code', 'Unknown')
-                    suggestions = data.get('suggestions', [])
-                    parlays = data.get('favorable_parlays', [])
-
-                    # Debug tracking
-                    parlay_debug_info.append(f"{league_code}: {len(parlays)} parlays")
-
-                    # Add league info to each suggestion
-                    for suggestion in suggestions:
-                        suggestion['league'] = league_code
-                    all_suggestions.extend(suggestions)
-
-                    # Add league info to each parlay
-                    for parlay in parlays:
-                        parlay['league'] = league_code
-                    all_parlays.extend(parlays)
-
-            # Show debug info in expander
-            with st.expander("🔍 Debug Info - Parlay Loading"):
-                st.write("Parlay count per league:")
-                for info in parlay_debug_info:
-                    st.text(info)
-                st.write(f"Total parlays loaded: {len(all_parlays)}")
-                if all_parlays:
-                    st.write("Sample parlay keys:", list(all_parlays[0].keys()) if all_parlays else "None")
-
-            # Quick filters
-            fcol1, fcol2, fcol3 = st.columns([2,1,1])
-            with fcol1:
-                team_filter = st.text_input("Filter by team name", "").strip().lower()
-            with fcol2:
-                prob_cut = st.slider("Min pick probability % (for display)", 0, 100, 55)
-            with fcol3:
-                # League filter
-                available_leagues = list(set([s.get('league', 'Unknown') for s in all_suggestions]))
-                league_filter = st.selectbox("Filter by league", ['All'] + available_leagues)
-
-            st.subheader(f"📋 Match Suggestions ({len(all_suggestions)} matches from {len(league_codes)} leagues)")
-
-            # Build dataframe for line-by-line display
-            if all_suggestions:
-                rows = []
-                for s in all_suggestions:
-                    home = s.get('home', '')
-                    away = s.get('away', '')
-                    league = s.get('league', 'Unknown')
-
-                    # Apply team filter
-                    if team_filter and (team_filter not in home.lower() and team_filter not in away.lower()):
-                        continue
-
-                    # Apply league filter
-                    if league_filter != 'All' and league != league_filter:
-                        continue
-
-                    picks = s.get('picks', [])
-                    top_pick = None
-                    if picks:
-                        top_pick = max(picks, key=lambda p: p.get('prob', 0))
-
-                    # Get ML prediction if available
-                    mp = s.get('ml_prediction') or {}
-
-                    # Get corner info
-                    cc = s.get('corners_cards', {})
-
-                    row = {
-                        'League': league,
-                        'Match': f"{home} vs {away}",
-                        'Home xG': f"{s.get('xg_home', 0):.2f}",
-                        'Away xG': f"{s.get('xg_away', 0):.2f}",
-                        'Top Pick': f"{top_pick['selection']} ({top_pick.get('prob', 0)*100:.1f}%)" if top_pick and (top_pick.get('prob', 0)*100) >= prob_cut else "—",
-                        'Market': top_pick.get('market', '—') if top_pick else "—",
-                        'Total Corners': f"{cc.get('TotalCorners', 0):.1f}",
-                        'Home Corners': f"{cc.get('HomeCorners', 0):.1f}",
-                        'Away Corners': f"{cc.get('AwayCorners', 0):.1f}",
-                        'Est. Cards': f"{cc.get('EstimatedCards', 0):.1f}",
-                    }
-                    rows.append(row)
-
-                if rows:
-                    df_suggestions = pd.DataFrame(rows)
-                    show_dataframe(df_suggestions, stretch=stretch_charts)
+            # File selector
+            file_labels = [os.path.basename(f) for f in file_list]
+            default_idx = 0
+            selected_file = st.selectbox("Select a file to view", file_labels, index=default_idx)
+            selected_path = file_list[file_labels.index(selected_file)]
+            st.caption(f"Selected file: {selected_path}")
+            # Show all files in expander
+            with st.expander("📁 View all files"):
+                for f in file_list:
+                    st.text(f"• {f}")
+            # Load and display file contents
+            data = _load_json(selected_path)
+            if data is None:
+                st.error(f"Could not load file: {selected_path}")
+            elif selected_file.startswith("consolidated_full_league_"):
+                # Consolidated file: show all matches from all leagues in a single table
+                st.subheader("Consolidated Full League Suggestions")
+                matches = data.get('matches') or {}
+                if not matches:
+                    st.warning("No matches found in consolidated file.")
                 else:
-                    st.info("No suggestions match your filters.")
+                    # Flatten all matches from all leagues, add 'League' column
+                    rows = []
+                    for league, league_matches in matches.items():
+                        for m in league_matches:
+                            # Extract home/away from 'match' string
+                            match_str = m.get('match', '')
+                            if ' v ' in match_str:
+                                home, away = match_str.split(' v ', 1)
+                            else:
+                                home, away = match_str, ''
+                            # Extract xG from 'estimated_xg'
+                            xg_str = m.get('estimated_xg', '')
+                            if ' - ' in xg_str:
+                                xg_home, xg_away = xg_str.split(' - ', 1)
+                            else:
+                                xg_home, xg_away = '', ''
+                            # Top pick and market
+                            picks = m.get('suggested_picks', [])
+                            top_pick = picks[0] if picks else {}
+                            row = {
+                                'League': league,
+                                'Match': f"{home} vs {away}",
+                                'Home xG': xg_home,
+                                'Away xG': xg_away,
+                                'Top Pick': top_pick.get('selection', ''),
+                                'Market': top_pick.get('market', ''),
+                            }
+                            rows.append(row)
+                    if rows:
+                        df = pd.DataFrame(rows)
+                        show_dataframe(df, stretch=stretch_charts)
+                    else:
+                        st.info("No matches to display in consolidated file.")
             else:
-                st.info("No suggestions available.")
-
-            # Display Parlay Suggestions
-            st.subheader(f"🎰 Favorable Parlays ({len(all_parlays)} parlays from all leagues)")
-            if all_parlays:
-                # Filter parlays by league if selected
-                filtered_parlays = all_parlays
-                if league_filter != 'All':
-                    filtered_parlays = [p for p in all_parlays if p.get('league') == league_filter]
-
-                if filtered_parlays:
-                    for i, parlay in enumerate(filtered_parlays):
-                        with st.expander(f"Parlay {i+1} ({parlay.get('league', 'Unknown')}) - {parlay.get('legs', 0)} legs, {parlay.get('combined_prob', 0)*100:.1f}% prob"):
-                            col1, col2 = st.columns([2, 1])
-                            with col1:
-                                legs = parlay.get('selections', [])
-                                for j, leg in enumerate(legs):
-                                    match = leg.get('match', 'Unknown match')
-                                    selection = leg.get('selection', 'Unknown')
-                                    prob = leg.get('prob', 0) * 100
-                                    st.write(f"**Leg {j+1}:** {match} - {selection} ({prob:.1f}%)")
-                            with col2:
-                                st.metric("Combined Probability", f"{parlay.get('combined_prob', 0)*100:.1f}%")
-                                if 'combined_odds' in parlay:
-                                    st.metric("Combined Odds", f"{parlay.get('combined_odds', 0):.2f}")
-                                if 'expected_return' in parlay:
-                                    st.metric("Expected Return", f"${parlay.get('expected_return', 0):.2f}")
+                # Per-league file: show as before
+                st.subheader(f"Per-League Suggestions: {selected_file}")
+                suggestions = data.get('suggestions', [])
+                if not suggestions:
+                    st.warning("No suggestions found in this file.")
                 else:
-                    st.info("No parlays match your league filter.")
-            else:
-                st.info("No favorable parlays found.")
-
+                    rows = []
+                    for s in suggestions:
+                        home = s.get('home', '')
+                        away = s.get('away', '')
+                        picks = s.get('picks', [])
+                        top_pick = max(picks, key=lambda p: p.get('prob', 0)) if picks else None
+                        row = {
+                            'Match': f"{home} vs {away}",
+                            'Home xG': s.get('xg_home', ''),
+                            'Away xG': s.get('xg_away', ''),
+                            'Top Pick': top_pick['selection'] if top_pick else '',
+                            'Market': top_pick['market'] if top_pick else '',
+                        }
+                        rows.append(row)
+                    if rows:
+                        df = pd.DataFrame(rows)
+                        show_dataframe(df, stretch=stretch_charts)
+                    else:
+                        st.info("No matches to display in this file.")
     elif app_mode == "ML Predictions":
         st.header("🤖 Machine Learning Predictions")
 
@@ -531,19 +495,35 @@ def main():
                 latest_path = full_league_paths[0]
                 ts = os.path.basename(latest_path).split('_')[-1].replace('.json','')
                 league_codes = [data.get('league_code', 'Unknown') for data in full_league_data_list if isinstance(data, dict)]
-
                 st.caption(f"Analysis run: {ts} | Leagues: {', '.join(league_codes)} | Files: {len(full_league_paths)}")
 
             # Combine all suggestions from all leagues
             all_suggestions = []
             for data in full_league_data_list:
                 if isinstance(data, dict):
-                    league_code = data.get('league_code', 'Unknown')
-                    suggestions = data.get('suggestions', [])
-                    # Add league info to each suggestion
-                    for suggestion in suggestions:
-                        suggestion['league'] = league_code
-                    all_suggestions.extend(suggestions)
+                    # Per-league format
+                    if 'suggestions' in data:
+                        league_code = data.get('league_code', 'Unknown')
+                        suggestions = data.get('suggestions', [])
+                        for suggestion in suggestions:
+                            suggestion['league'] = league_code
+                        all_suggestions.extend(suggestions)
+                    # Consolidated format
+                    elif 'matches' in data:
+                        matches_by_league = data.get('matches', {})
+                        for league_code, league_matches in matches_by_league.items():
+                            if isinstance(league_matches, list):
+                                for match in league_matches:
+                                    suggestion = {
+                                        'league': league_code,
+                                        'home': match.get('match', 'vs').split(' v ')[0].strip() if ' v ' in match.get('match', '') else 'Unknown',
+                                        'away': match.get('match', 'vs').split(' v ')[1].strip() if ' v ' in match.get('match', '') else 'Unknown',
+                                        'xg_home': float(match.get('estimated_xg', '0 - 0').split(' - ')[0]),
+                                        'xg_away': float(match.get('estimated_xg', '0 - 0').split(' - ')[1]),
+                                        'picks': match.get('suggested_picks', []),
+                                        'ml_predictions': match.get('ml_predictions')
+                                    }
+                                    all_suggestions.append(suggestion)
 
             # Filter controls
             fcol1, fcol2, fcol3 = st.columns([2,1,1])
@@ -557,8 +537,8 @@ def main():
 
             st.subheader(f"📊 ML Predictions for {len(all_suggestions)} matches")
 
-            # Check if we have ML predictions
-            has_ml = any(s.get('ml_prediction') for s in all_suggestions)
+            # Check if we have ML predictions (support both 'ml_prediction' and 'ml_predictions' keys)
+            has_ml = any(s.get('ml_prediction') or s.get('ml_predictions') for s in all_suggestions)
 
             if not has_ml:
                 st.warning("No ML predictions found in the data. Run with `--ml-mode predict` to generate ML predictions.")
@@ -576,20 +556,61 @@ def main():
                     if league_filter != 'All' and league != league_filter:
                         continue
 
-                    mp = s.get('ml_prediction')
+                    # Support both 'ml_prediction' (per-league files) and 'ml_predictions' (consolidated file)
+                    mp = s.get('ml_prediction') or s.get('ml_predictions')
                     if not mp:
                         continue
 
-                    # Extract ML predictions
-                    total_goals = mp.get('pred_total_goals', 0)
-                    total_goals_model = mp.get('pred_total_goals_model', 'N/A')
-                    prob_home = mp.get('prob_1x2_home', 0)
-                    prob_draw = mp.get('prob_1x2_draw', 0)
-                    prob_away = mp.get('prob_1x2_away', 0)
-                    prob_btts_yes = mp.get('prob_btts_yes', 0)
-                    prob_btts_no = mp.get('prob_btts_no', 0)
-                    model_1x2 = mp.get('model_1x2', 'N/A')
-                    model_btts = mp.get('model_btts', 'N/A')
+                    # Extract ML predictions - handle both formats
+                    # Per-league format: {'pred_total_goals': 2.61, 'prob_1x2_home': 0.60, ...}
+                    # Consolidated format: {'total_goals': '2.61', 'h_d_a_probs': 'H=0.60 D=0.28 A=0.12', ...}
+
+                    if isinstance(mp, dict):
+                        # Try per-league format first
+                        total_goals = mp.get('pred_total_goals') or mp.get('total_goals', 0)
+                        if isinstance(total_goals, str):
+                            total_goals = float(total_goals)
+
+                        total_goals_model = mp.get('pred_total_goals_model') or mp.get('model', 'N/A')
+
+                        # Try to get 1X2 probs from both formats
+                        prob_home = mp.get('prob_1x2_home', 0)
+                        prob_draw = mp.get('prob_1x2_draw', 0)
+                        prob_away = mp.get('prob_1x2_away', 0)
+
+                        # Parse consolidated format if needed
+                        if not prob_home and 'h_d_a_probs' in mp:
+                            h_d_a_str = mp['h_d_a_probs']
+                            # Parse "H=0.60 D=0.28 A=0.12"
+                            import re
+                            matches = re.findall(r'([HDA])=([\d.]+)', h_d_a_str)
+                            for key, val in matches:
+                                if key == 'H':
+                                    prob_home = float(val)
+                                elif key == 'D':
+                                    prob_draw = float(val)
+                                elif key == 'A':
+                                    prob_away = float(val)
+
+                        # BTTS probs
+                        prob_btts_yes = mp.get('prob_btts_yes', 0)
+                        prob_btts_no = mp.get('prob_btts_no', 0)
+
+                        # Parse consolidated BTTS format if needed
+                        if not prob_btts_yes and 'btts_probs' in mp:
+                            btts_str = mp['btts_probs']
+                            # Parse "Yes=0.51 No=0.49"
+                            matches = re.findall(r'(Yes|No)=([\d.]+)', btts_str)
+                            for key, val in matches:
+                                if key == 'Yes':
+                                    prob_btts_yes = float(val)
+                                elif key == 'No':
+                                    prob_btts_no = float(val)
+
+                        model_1x2 = mp.get('model_1x2', 'N/A')
+                        model_btts = mp.get('model_btts', 'N/A')
+                    else:
+                        continue
 
                     # Calculate DC probs
                     dc_1x = prob_home + prob_draw
@@ -666,7 +687,8 @@ def main():
                         if league_filter != 'All' and league != league_filter:
                             continue
 
-                        mp = s.get('ml_prediction')
+                        # Support both formats
+                        mp = s.get('ml_prediction') or s.get('ml_predictions')
                         if not mp:
                             continue
 
@@ -676,20 +698,49 @@ def main():
 
                             with col_left:
                                 st.markdown("**ML Predictions**")
-                                total_goals = mp.get('pred_total_goals', 0)
+
+                                # Parse total goals
+                                total_goals = mp.get('pred_total_goals') or mp.get('total_goals', 0)
+                                if isinstance(total_goals, str):
+                                    total_goals = float(total_goals)
                                 st.metric("Total Goals", f"{total_goals:.2f}", delta=None)
 
+                                # Parse 1X2 probs
                                 prob_home = mp.get('prob_1x2_home', 0)
                                 prob_draw = mp.get('prob_1x2_draw', 0)
                                 prob_away = mp.get('prob_1x2_away', 0)
+
+                                if not prob_home and 'h_d_a_probs' in mp:
+                                    import re
+                                    h_d_a_str = mp['h_d_a_probs']
+                                    matches = re.findall(r'([HDA])=([\d.]+)', h_d_a_str)
+                                    for key, val in matches:
+                                        if key == 'H':
+                                            prob_home = float(val)
+                                        elif key == 'D':
+                                            prob_draw = float(val)
+                                        elif key == 'A':
+                                            prob_away = float(val)
 
                                 st.write("**Match Result Probabilities:**")
                                 st.write(f"  Home Win: {prob_home:.1%}")
                                 st.write(f"  Draw: {prob_draw:.1%}")
                                 st.write(f"  Away Win: {prob_away:.1%}")
 
+                                # Parse BTTS probs
                                 prob_btts_yes = mp.get('prob_btts_yes', 0)
                                 prob_btts_no = mp.get('prob_btts_no', 0)
+
+                                if not prob_btts_yes and 'btts_probs' in mp:
+                                    import re
+                                    btts_str = mp['btts_probs']
+                                    matches = re.findall(r'(Yes|No)=([\d.]+)', btts_str)
+                                    for key, val in matches:
+                                        if key == 'Yes':
+                                            prob_btts_yes = float(val)
+                                        elif key == 'No':
+                                            prob_btts_no = float(val)
+
                                 st.write("**Both Teams To Score:**")
                                 st.write(f"  Yes: {prob_btts_yes:.1%}")
                                 st.write(f"  No: {prob_btts_no:.1%}")

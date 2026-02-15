@@ -1,47 +1,51 @@
 {
-  "England": {
-    "Championship": {
-      "Standings": [],
-      "Fixtures": [
-        { "time": "21:45", "home": "Blackburn", "away": "Oxford Utd" },
-        { "time": "21:45", "home": "Charlton", "away": "Middlesbrough" },
-        { "time": "21:45", "home": "Preston", "away": "Coventry" },
-        { "time": "21:45", "home": "Sheffield Utd", "away": "Norwich" },
-        { "time": "21:45", "home": "Southampton", "away": "West Brom" },
-        { "time": "21:45", "home": "Swansea", "away": "Portsmouth" },
-        { "time": "21:45", "home": "Watford", "away": "Sheffield Wed" },
-        { "time": "22:00", "home": "QPR", "away": "Birmingham" }
+  "Germany": {
+    "Bundesliga": {
+      "matches": [
+        { "date": "2026-02-14", "time": "16:30", "home": "Bayer Leverkusen", "away": "St. Pauli" },
+        { "date": "2026-02-14", "time": "16:30", "home": "Eintracht Frankfurt", "away": "B. Monchengladbach" },
+        { "date": "2026-02-14", "time": "16:30", "home": "Hamburger SV", "away": "Union Berlin" },
+        { "date": "2026-02-14", "time": "16:30", "home": "Hoffenheim", "away": "Freiburg" },
+        { "date": "2026-02-14", "time": "16:30", "home": "Werder Bremen", "away": "Bayern Munich" },
+        { "date": "2026-02-14", "time": "19:30", "home": "Stuttgart", "away": "FC Koln" }
       ]
-    },
-
-    "League One": {
-      "Standings": [],
-      "Fixtures": [
-        { "time": "21:45", "home": "Doncaster", "away": "Stockport County" },
-        { "time": "21:45", "home": "Exeter", "away": "AFC Wimbledon" },
-        { "time": "21:45", "home": "Leyton Orient", "away": "Luton" },
-        { "time": "21:45", "home": "Lincoln", "away": "Barnsley" },
-        { "time": "21:45", "home": "Mansfield", "away": "Bolton" },
-        { "time": "21:45", "home": "Northampton", "away": "Huddersfield" },
-        { "time": "21:45", "home": "Port Vale", "away": "Bradford City" },
-        { "time": "21:45", "home": "Stevenage", "away": "Cardiff" },
-        { "time": "21:45", "home": "Wycombe", "away": "Plymouth" },
-        { "time": "22:00", "home": "Reading", "away": "Peterborough" }
+    }
+  },
+  "France": {
+    "Ligue 1": {
+      "matches": [
+        { "date": "2026-02-14", "time": "18:00", "home": "Marseille", "away": "Strasbourg" },
+        { "date": "2026-02-14", "time": "20:00", "home": "Lille", "away": "Brest" },
+        { "date": "2026-02-14", "time": "22:05", "home": "Paris FC", "away": "Lens" }
       ]
-    },
-
-    "League Two": {
-      "Standings": [],
-      "Fixtures": [
-        { "time": "21:45", "home": "Barnet", "away": "Bristol Rovers" },
-        { "time": "21:45", "home": "Barrow", "away": "Tranmere" },
-        { "time": "21:45", "home": "Bromley", "away": "Crawley" },
-        { "time": "21:45", "home": "Cambridge Utd", "away": "Chesterfield" },
-        { "time": "21:45", "home": "Fleetwood", "away": "Salford" },
-        { "time": "21:45", "home": "Harrogate", "away": "Accrington" },
-        { "time": "21:45", "home": "Notts Co", "away": "MK Dons" },
-        { "time": "21:45", "home": "Shrewsbury", "away": "Grimsby" },
-        { "time": "21:45", "home": "Swindon", "away": "Cheltenham" }
+    }
+  },
+  "Italy": {
+    "Serie A": {
+      "matches": [
+        { "date": "2026-02-14", "time": "16:00", "home": "Como", "away": "Fiorentina" },
+        { "date": "2026-02-14", "time": "19:00", "home": "Lazio", "away": "Atalanta" },
+        { "date": "2026-02-14", "time": "21:45", "home": "Inter", "away": "Juventus" }
+      ]
+    }
+  },
+  "Netherlands": {
+    "Eredivisie": {
+      "matches": [
+        { "date": "2026-02-14", "time": "17:30", "home": "Heracles", "away": "NAC Breda" },
+        { "date": "2026-02-14", "time": "19:45", "home": "Excelsior", "away": "AZ Alkmaar" },
+        { "date": "2026-02-14", "time": "21:00", "home": "Ajax", "away": "Sittard" },
+        { "date": "2026-02-14", "time": "22:00", "home": "Groningen", "away": "Utrecht" }
+      ]
+    }
+  },
+  "Spain": {
+    "La Liga": {
+      "matches": [
+        { "date": "2026-02-14", "time": "15:00", "home": "Espanyol", "away": "Celta Vigo" },
+        { "date": "2026-02-14", "time": "17:15", "home": "Getafe", "away": "Villarreal" },
+        { "date": "2026-02-14", "time": "19:30", "home": "Sevilla", "away": "Alaves" },
+        { "date": "2026-02-14", "time": "22:00", "home": "Real Madrid", "away": "Real Sociedad" }
       ]
     }
   }
