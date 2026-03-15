@@ -65,8 +65,6 @@ class AnalysisWorkflow:
     def extract_leagues(self, data: dict) -> Set[str]:
         """Extract unique league codes from upcoming matches data."""
         self.print_step(2, "Detecting leagues from upcoming matches")
-
-        # League mapping for detection
         LEAGUE_MAP = {
             'Premier League': 'E0',
             'Championship': 'E1',
@@ -86,8 +84,16 @@ class AnalysisWorkflow:
         leagues = set()
         match_count = 0
 
+        # Handle top-level 'matches' array
+        if isinstance(data, dict) and 'matches' in data:
+            for match in data['matches']:
+                league_name = match.get('league', '')
+                league_code = LEAGUE_MAP.get(league_name, '')
+                if league_code:
+                    leagues.add(league_code)
+                match_count += 1
         # Handle flat list format
-        if isinstance(data, list):
+        elif isinstance(data, list):
             for match in data:
                 league = match.get('league', '')
                 if league:
@@ -107,8 +113,7 @@ class AnalysisWorkflow:
                     matches = comp_data.get('matches', []) if isinstance(comp_data, dict) else []
                     match_count += len(matches)
 
-        print(f"✅ Detected {len(leagues)} leagues: {', '.join(sorted(leagues))}")
-        print(f"   Total matches: {match_count}")
+        print(f"✅ Detected {len(leagues)} leagues: {', '.join(sorted(leagues))}\n    Total matches: {match_count}")
         return leagues
 
     def confirm_leagues(self, detected_leagues: Set[str]) -> List[str]:
