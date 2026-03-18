@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -25,18 +26,28 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Set
 
+from src.ai_enrichment import (
+    pre_run_fetch,
+    analyse_context_warnings, print_context_warnings,
+    post_process_explanations,
+    post_scan_value_bets,
+    generate_digest,
+)
+
 
 class AnalysisWorkflow:
     """Orchestrates the full analysis workflow with user prompts."""
 
-    def __init__(self, date: str = None, leagues: str = None, auto: bool = False, verbose: bool = False):
+    def __init__(self, date: str = None, leagues: str = None, auto: bool = False, verbose: bool = False, args=None):
         self.date = date or datetime.now().strftime('%Y-%m-%d')
         self.date_compact = self.date.replace('-', '')
         self.manual_leagues = leagues
         self.auto = auto
         self.verbose = verbose
+        self.args = args
         self.upcoming_file = 'data/raw/upcomingMatches.json'
         self.output_dir = 'data/analysis'
+        self.logger = logging.getLogger(__name__)
 
     def print_header(self, text: str):
         """Print a formatted header."""
@@ -275,9 +286,23 @@ class AnalysisWorkflow:
         """Execute the complete workflow."""
         self.print_header(f"Football Analytics Workflow - {self.date}")
 
+        # Integration A: pre-fetch fixtures
+        if not getattr(self.args, 'skip_fetch', False):
+            try:
+                fetched = pre_run_fetch(self.date)
+                if fetched:
+                    self.logger.info("[AI-A] Fixtures fetched → %s", fetched)
+            except Exception as exc:
+                self.logger.warning("[AI-A] Fetch failed (%s). Using existing file.", exc)
+
         # Step 1-2: Read and detect leagues
         data = self.read_upcoming_matches()
         detected_leagues = self.extract_leagues(data)
+
+        # Integration C: context warnings
+        ctx = analyse_context_warnings(data, detected_leagues)
+        if ctx['summary']:
+            print_context_warnings(ctx)
 
         # Step 3: Confirm leagues
         leagues = self.confirm_leagues(detected_leagues)
@@ -290,8 +315,42 @@ class AnalysisWorkflow:
         # Step 5: Full-league analysis
         full_league_success = self.run_full_league_analysis(leagues)
 
+        # Resolve consolidated path for AI integrations
+        import glob
+        consolidated_files = glob.glob(f'data/analysis/consolidated_full_league_{self.date_compact}_*.json')
+        consolidated_path = max(consolidated_files, key=os.path.getmtime) if consolidated_files else ""
+
+        # Integration D: LLM rationales
+        if consolidated_path and not getattr(self.args, 'skip_ai', False):
+            try:
+                n = post_process_explanations(consolidated_path, self.date)
+                self.logger.info("[AI-D] Rationales added to %d predictions", n)
+            except Exception as exc:
+                self.logger.warning("[AI-D] Explainer failed (%s). Continuing.", exc)
+
+        # Integration E: value alerts
+        alerts_path = ""
+        if consolidated_path and not getattr(self.args, 'skip_ai', False):
+            try:
+                alerts_path = post_scan_value_bets(consolidated_path, self.date)
+                self.logger.info("[AI-E] Value alerts → %s", alerts_path)
+            except Exception as exc:
+                self.logger.warning("[AI-E] Value scan failed (%s). Continuing.", exc)
+
         # Step 6: Corners analysis
         corners_success = self.run_corners_analysis(leagues)
+
+        # Resolve corners path for digest
+        corners_files = glob.glob(f'data/corners/parsed_corners_predictions_{self.date_compact}.json')
+        corners_path = corners_files[0] if corners_files else ""
+
+        # Integration H: daily digest
+        if not getattr(self.args, 'skip_ai', False):
+            try:
+                digest_path = generate_digest(consolidated_path, corners_path, alerts_path, self.date)
+                self.logger.info("[AI-H] Digest → %s", digest_path)
+            except Exception as exc:
+                self.logger.warning("[AI-H] Digest failed (%s). Continuing.", exc)
 
         # Summary
         self.print_summary(full_league_success, corners_success)
@@ -321,6 +380,8 @@ Examples:
     parser.add_argument('--leagues', help='Override auto-detected leagues (comma-separated, e.g., E0,E2,E3)')
     parser.add_argument('--auto', action='store_true', help='Auto mode: skip all confirmation prompts')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
+    parser.add_argument('--skip-fetch', action='store_true', help='Skip Integration A: do not auto-fetch fixtures')
+    parser.add_argument('--skip-ai', action='store_true', help='Skip D+E+H: no LLM explainer, no value scan, no digest')
 
     args = parser.parse_args()
 
@@ -328,7 +389,8 @@ Examples:
         date=args.date,
         leagues=args.leagues,
         auto=args.auto,
-        verbose=args.verbose
+        verbose=args.verbose,
+        args=args,
     )
 
     try:
