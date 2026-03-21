@@ -368,6 +368,12 @@ def main():
 
     # Sidebar for navigation
     st.sidebar.title("Navigation")
+    tab1, tab2, tab_chat = st.tabs(["Full League", "Corners", "Ask the Analyst"])
+
+    from ai_enrichment.streamlit_chat_tab import render_chat_tab
+    with tab_chat:
+        render_chat_tab()
+
     app_mode = st.sidebar.radio(
         "Choose a view",
         ["Full League Suggestions", "ML Predictions", "Corner Analysis", "Corner Predictions", "Live Corner Predictor"]
