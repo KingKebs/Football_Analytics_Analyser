@@ -1056,51 +1056,58 @@ def main():
 
     elif app_mode == "Live Corner Predictor":
         st.header("Live Corner Predictor")
-        st.info("Select a league and enter two teams to get a corner prediction.")
-
-        league_stats_map = list_league_team_stats()
-        if not league_stats_map:
-            st.error("No team stats files found in `data/corners/`. Cannot make predictions.")
-            st.stop()
-
-        leagues = sorted(league_stats_map.keys())
-        selected_league = st.selectbox("Select League", leagues)
-
-        if selected_league:
-            team_stats_path = league_stats_map[selected_league]
-            team_stats_data = load_team_stats(team_stats_path)
-            enriched_df = load_enriched_csv_for_team_stats(team_stats_path)
-
-            home_teams = sorted(team_stats_data.get('home', {}).keys())
-            away_teams = sorted(team_stats_data.get('away', {}).keys())
-
-            col1, col2 = st.columns(2)
-            with col1:
-                home_team = st.selectbox("Home Team", home_teams)
-            with col2:
-                away_team = st.selectbox("Away Team", away_teams)
-
-            if st.button("Predict Corners"):
-                if home_team and away_team:
-                    prediction, error = compute_match_prediction(team_stats_data, enriched_df, home_team, away_team)
-                    if error:
-                        st.error(error)
-                    else:
-                        st.success("Prediction successful!")
-                        st.metric("Predicted Total Corners", f"{prediction['pred_total_mean']:.2f}")
-                        st.write(f"Range: {prediction['pred_total_range'][0]:.2f} - {prediction['pred_total_range'][1]:.2f}")
-
-                        c1, c2 = st.columns(2)
-                        c1.metric("1H Corners", f"{prediction['pred_1h_mean']:.2f}")
-                        c2.metric("2H Corners", f"{prediction['pred_2h_mean']:.2f}")
-
-                        st.subheader("Market Lines (Total Corners)")
-                        lines_df = pd.DataFrame(prediction['total_lines'])
-                        show_dataframe(lines_df, stretch_charts)
-
-                        st.subheader("Market Lines (1H Corners)")
-                        half_lines_df = pd.DataFrame(prediction['half_lines'])
-                        show_dataframe(half_lines_df, stretch_charts)
+        st.warning("⚠️ This feature is currently under development.")
+        st.info("The Live Corner Predictor feature requires additional implementation of corner prediction functions. Coming soon!")
+        # TODO: Implement the following functions:
+        # - list_league_team_stats()
+        # - load_team_stats(team_stats_path)
+        # - load_enriched_csv_for_team_stats(team_stats_path)
+        # - compute_match_prediction(team_stats_data, enriched_df, home_team, away_team)
+        # 
+        # Original code commented out below:
+        # league_stats_map = list_league_team_stats()
+        # if not league_stats_map:
+        #     st.error("No team stats files found in `data/corners/`. Cannot make predictions.")
+        #     st.stop()
+        #
+        # leagues = sorted(league_stats_map.keys())
+        # selected_league = st.selectbox("Select League", leagues)
+        #
+        # if selected_league:
+        #     team_stats_path = league_stats_map[selected_league]
+        #     team_stats_data = load_team_stats(team_stats_path)
+        #     enriched_df = load_enriched_csv_for_team_stats(team_stats_path)
+        #
+        #     home_teams = sorted(team_stats_data.get('home', {}).keys())
+        #     away_teams = sorted(team_stats_data.get('away', {}).keys())
+        #
+        #     col1, col2 = st.columns(2)
+        #     with col1:
+        #         home_team = st.selectbox("Home Team", home_teams)
+        #     with col2:
+        #         away_team = st.selectbox("Away Team", away_teams)
+        #
+        #     if st.button("Predict Corners"):
+        #         if home_team and away_team:
+        #             prediction, error = compute_match_prediction(team_stats_data, enriched_df, home_team, away_team)
+        #             if error:
+        #                 st.error(error)
+        #             else:
+        #                 st.success("Prediction successful!")
+        #                 st.metric("Predicted Total Corners", f"{prediction['pred_total_mean']:.2f}")
+        #                 st.write(f"Range: {prediction['pred_total_range'][0]:.2f} - {prediction['pred_total_range'][1]:.2f}")
+        #
+        #                 c1, c2 = st.columns(2)
+        #                 c1.metric("1H Corners", f"{prediction['pred_1h_mean']:.2f}")
+        #                 c2.metric("2H Corners", f"{prediction['pred_2h_mean']:.2f}")
+        #
+        #                 st.subheader("Market Lines (Total Corners)")
+        #                 lines_df = pd.DataFrame(prediction['total_lines'])
+        #                 show_dataframe(lines_df, stretch_charts)
+        #
+        #                 st.subheader("Market Lines (1H Corners)")
+        #                 half_lines_df = pd.DataFrame(prediction['half_lines'])
+        #                 show_dataframe(half_lines_df, stretch_charts)
 
     # Footer
     st.markdown("---")
