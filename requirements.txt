@@ -17,3 +17,6 @@ PyYAML>=6.0
 beautifulsoup4>=4.9.0
 lxml>=4.9.0
 
+
+# AI enrichment layer
+anthropic>=0.40.0
