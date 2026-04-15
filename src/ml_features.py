@@ -76,7 +76,7 @@ def engineer_features(history_df: pd.DataFrame, rolling_window: int = 6) -> pd.D
         past_home = df[((df['HomeTeam']==home) | (df['AwayTeam']==home)) & (df['Date'] < date)]
         past_away = df[((df['HomeTeam']==away) | (df['AwayTeam']==away)) & (df['Date'] < date)]
 
-        def rolling_stats(past: pd.DataFrame):
+        def rolling_stats(past: pd.DataFrame, team: str):
             if past.empty:
                 return {
                     'roll_goals_for': 0.0,
@@ -87,9 +87,9 @@ def engineer_features(history_df: pd.DataFrame, rolling_window: int = 6) -> pd.D
             recent = past.tail(rolling_window)
             gf = []; ga = []; sh_for = []; sh_against = []
             for _, r in recent.iterrows():
-                if r['HomeTeam'] == home:
+                if r['HomeTeam'] == team:
                     gf.append(r['FTHG']); ga.append(r['FTAG']); sh_for.append(r['HS']); sh_against.append(r['AS'])
-                elif r['AwayTeam'] == home:
+                elif r['AwayTeam'] == team:
                     gf.append(r['FTAG']); ga.append(r['FTHG']); sh_for.append(r['AS']); sh_against.append(r['HS'])
             return {
                 'roll_goals_for': np.mean(gf) if gf else 0.0,
@@ -98,8 +98,8 @@ def engineer_features(history_df: pd.DataFrame, rolling_window: int = 6) -> pd.D
                 'roll_shots_against': np.mean(sh_against) if sh_against else 0.0,
             }
 
-        home_roll = rolling_stats(past_home)
-        away_roll = rolling_stats(past_away)
+        home_roll = rolling_stats(past_home, home)
+        away_roll = rolling_stats(past_away, away)
 
         features_rows.append({
             'Date': date,

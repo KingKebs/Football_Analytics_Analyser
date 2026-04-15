@@ -881,9 +881,11 @@ def main_full_league(bankroll: float = 100.0, league_code: str = 'E0', use_parse
             home, away = s['home'], s['away']
             feat_row_dict = build_match_feature_row(ml_feature_df, home, away)
             feature_vector = np.array([feat_row_dict[c] for c in TRAIN_FEATURE_COLUMNS], dtype=float).reshape(1,-1)
-            # Log feature vector for debugging
-            logging.info(f"ML features for {home} vs {away}: {feature_vector}")
-            ml_pred = predict_match(ml_models, feature_vector)
+            # Log feature vector for debugging (sample first 5 features for brevity)
+            logging.info(f"ML features for {home} vs {away}: {list(feat_row_dict.values())[:5]}")
+            # Pass match identifier for unique signature generation
+            match_id = f"{home}|{away}"
+            ml_pred = predict_match(ml_models, feature_vector, match_id=match_id)
             # Recompute baseline markets directly from xG (avoids reconstructing matrix from dict)
             mat = score_probability_matrix(s['xg_home'], s['xg_away'], max_goals=6)
             baseline_full = extract_markets_from_score_matrix(mat, min_confidence=0.0)

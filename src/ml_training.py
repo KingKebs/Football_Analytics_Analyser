@@ -157,8 +157,20 @@ def train_models(df: pd.DataFrame, weights: np.ndarray, algorithms: List[str] = 
     return results
 
 
-def predict_match(models: Dict, feature_row: np.ndarray) -> Dict[str, float]:
+def predict_match(models: Dict, feature_row: np.ndarray, match_id: str = None) -> Dict[str, float]:
+    """
+    Predict match outcome using trained ML models.
+
+    Args:
+        models: Dict containing 'regression' and 'classification' model dicts
+        feature_row: numpy array of shape (1, n_features) with match features
+        match_id: Optional string identifier (e.g., "home|away|date") for signature generation
+
+    Returns:
+        Dict with predictions, model names, and optional signature
+    """
     out = {}
+
     # Regression models
     reg_models = models.get('regression', {})
     if 'TotalGoals_XGB' in reg_models:
@@ -167,19 +179,42 @@ def predict_match(models: Dict, feature_row: np.ndarray) -> Dict[str, float]:
     elif 'TotalGoals_RF' in reg_models:
         out['pred_total_goals'] = float(reg_models['TotalGoals_RF'].predict(feature_row)[0])
         out['pred_total_goals_model'] = 'RF'
+
     # 1X2 classification
     cls_models = models.get('classification', {})
     if '1X2_XGB' in cls_models:
         probs = cls_models['1X2_XGB'].predict_proba(feature_row)[0]
-        out['prob_1x2_home'] = float(probs[0]); out['prob_1x2_draw'] = float(probs[1]); out['prob_1x2_away'] = float(probs[2]); out['model_1x2'] = 'XGB'
+        out['prob_1x2_home'] = float(probs[0])
+        out['prob_1x2_draw'] = float(probs[1])
+        out['prob_1x2_away'] = float(probs[2])
+        out['model_1x2'] = 'XGB'
     elif '1X2_RF' in cls_models:
         probs = cls_models['1X2_RF'].predict_proba(feature_row)[0]
-        out['prob_1x2_home'] = float(probs[0]); out['prob_1x2_draw'] = float(probs[1]); out['prob_1x2_away'] = float(probs[2]); out['model_1x2'] = 'RF'
+        out['prob_1x2_home'] = float(probs[0])
+        out['prob_1x2_draw'] = float(probs[1])
+        out['prob_1x2_away'] = float(probs[2])
+        out['model_1x2'] = 'RF'
+
     # BTTS
     if 'BTTS_XGB' in cls_models:
         probs = cls_models['BTTS_XGB'].predict_proba(feature_row)[0]
-        out['prob_btts_no'] = float(probs[0]); out['prob_btts_yes'] = float(probs[1]); out['model_btts'] = 'XGB'
+        out['prob_btts_no'] = float(probs[0])
+        out['prob_btts_yes'] = float(probs[1])
+        out['model_btts'] = 'XGB'
     elif 'BTTS_RF' in cls_models:
         probs = cls_models['BTTS_RF'].predict_proba(feature_row)[0]
-        out['prob_btts_no'] = float(probs[0]); out['prob_btts_yes'] = float(probs[1]); out['model_btts'] = 'RF'
+        out['prob_btts_no'] = float(probs[0])
+        out['prob_btts_yes'] = float(probs[1])
+        out['model_btts'] = 'RF'
+
+    # Store feature vector hash for signature generation (unique per match input)
+    if feature_row is not None:
+        import hashlib
+        feature_hash = hashlib.sha256(feature_row.tobytes()).hexdigest()[:8]
+        out['_feature_hash'] = feature_hash
+
+    # Store match_id if provided (for additional context)
+    if match_id:
+        out['_match_id'] = match_id
+
     return out

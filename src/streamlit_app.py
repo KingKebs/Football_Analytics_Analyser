@@ -55,6 +55,55 @@ def show_dataframe(df, stretch: bool = True, fallback_width: int = 800):
             pass
     st.dataframe(df, width=fallback_width)
 
+def _json_safe(obj):
+    """Recursively convert pandas / numpy objects into JSON-serializable Python types."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return {str(k): _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, pd.DataFrame):
+        return [_json_safe(row) for row in obj.to_dict(orient='records')]
+    if isinstance(obj, pd.Series):
+        return _json_safe(obj.to_dict())
+    if isinstance(obj, (pd.Timestamp, datetime)):
+        return obj.isoformat()
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
+        return None
+    if isinstance(obj, (np.ndarray,)):
+        return [_json_safe(v) for v in obj.tolist()]
+    if pd.isna(obj):
+        return None
+    return obj
+
+
+def build_json_download_payload(mode: str, results, source_file: str = None, filters: dict = None, metadata: dict = None) -> str:
+    """Build a JSON string for the current UI results."""
+    payload = {
+        'mode': mode,
+        'generated_at': datetime.now().isoformat(),
+        'source_file': source_file,
+        'filters': _json_safe(filters or {}),
+        'metadata': _json_safe(metadata or {}),
+        'results': _json_safe(results),
+    }
+    # Validate the payload is JSON serializable before offering the download.
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def render_json_download(label: str, payload: str, filename: str):
+    """Render a download button for JSON content."""
+    st.download_button(
+        label=label,
+        data=payload,
+        file_name=filename,
+        mime='application/json',
+        use_container_width=False,
+    )
+
 # Inject light CSS for card-like visuals
 SPORTS_CSS = """
 <style>
@@ -455,6 +504,17 @@ def main():
                     if rows:
                         df = pd.DataFrame(rows)
                         show_dataframe(df, stretch=stretch_charts)
+                        download_payload = build_json_download_payload(
+                            mode='full_league_suggestions',
+                            results=rows,
+                            source_file=selected_path,
+                            metadata={'view': 'consolidated', 'match_count': len(rows)}
+                        )
+                        render_json_download(
+                            '⬇️ Download current consolidated results as JSON',
+                            download_payload,
+                            f"{Path(selected_file).stem}_current_view.json"
+                        )
                     else:
                         st.info("No matches to display in consolidated file.")
             else:
@@ -481,6 +541,17 @@ def main():
                     if rows:
                         df = pd.DataFrame(rows)
                         show_dataframe(df, stretch=stretch_charts)
+                        download_payload = build_json_download_payload(
+                            mode='full_league_suggestions',
+                            results=rows,
+                            source_file=selected_path,
+                            metadata={'view': 'per_league', 'match_count': len(rows)}
+                        )
+                        render_json_download(
+                            '⬇️ Download current league results as JSON',
+                            download_payload,
+                            f"{Path(selected_file).stem}_current_view.json"
+                        )
                     else:
                         st.info("No matches to display in this file.")
     elif app_mode == "ML Predictions":
@@ -637,6 +708,35 @@ def main():
                         'DC 12': f"{dc_12:.2f}",
                     }
 
+                    # Build a comprehensive prediction signature that includes match-specific data
+                    # This ensures each match has a unique signature based on both predictions AND teams
+                    import json
+                    import hashlib
+
+                    # Extract feature hash if available (from predict_match function)
+                    feature_hash = mp.get('_feature_hash', '')
+                    match_id = mp.get('_match_id', f"{home}|{away}")
+
+                    # Build signature payload with match data + predictions
+                    sig_payload = {
+                        'match': match_id,
+                        'total_goals': round(float(total_goals), 2),
+                        'prob_home': round(float(prob_home), 2),
+                        'prob_draw': round(float(prob_draw), 2),
+                        'prob_away': round(float(prob_away), 2),
+                        'prob_btts_yes': round(float(prob_btts_yes), 2),
+                        'prob_btts_no': round(float(prob_btts_no), 2),
+                        'feature_hash': feature_hash,
+                    }
+
+                    # Create deterministic JSON representation
+                    sig_json = json.dumps(sig_payload, sort_keys=True, separators=(',', ':'))
+                    # Hash it for compact representation
+                    sig_hash = hashlib.sha256(sig_json.encode('utf-8')).hexdigest()[:12]
+
+                    # Compact display format (includes match teams for visual verification)
+                    row['Prediction Signature'] = f"{home[:3]}-{away[:3]}|TG={total_goals:.2f}|1X2={prob_home:.2f},{prob_draw:.2f},{prob_away:.2f}|BTTS={prob_btts_yes:.2f},{prob_btts_no:.2f}|{sig_hash}"
+
                     # Add delta columns if requested
                     if show_comparison and delta_1x2:
                         row['ΔH'] = f"{delta_1x2.get('delta_home', 0):+.2f}"
@@ -649,8 +749,30 @@ def main():
                     ml_rows.append(row)
 
                 if ml_rows:
+                    # Compute similarity counts across identical prediction signatures.
+                    signature_counts = {}
+                    for row in ml_rows:
+                        sig = row.get('Prediction Signature', '')
+                        signature_counts[sig] = signature_counts.get(sig, 0) + 1
+                    for row in ml_rows:
+                        sig = row.get('Prediction Signature', '')
+                        row['Similarity Count'] = signature_counts.get(sig, 1)
+                        row['Similar Pattern'] = 'Shared' if row['Similarity Count'] > 1 else 'Unique'
+
                     df_ml = pd.DataFrame(ml_rows)
+                    # Put the similarity columns near the front so repeated rows are obvious.
+                    preferred_cols = ['League', 'Match', 'Prediction Signature', 'Similarity Count', 'Similar Pattern', 'Total Goals', 'Model', 'Home Win', 'Draw', 'Away Win', 'BTTS Yes', 'BTTS No', 'DC 1X', 'DC X2', 'DC 12']
+                    delta_cols = [c for c in ['ΔH', 'ΔD', 'ΔA', 'ΔBTTS'] if c in df_ml.columns]
+                    ordered_cols = [c for c in preferred_cols if c in df_ml.columns] + delta_cols
+                    ordered_cols += [c for c in df_ml.columns if c not in ordered_cols]
+                    df_ml = df_ml[ordered_cols]
+
                     st.info(f"✅ Showing {len(df_ml)} matches with ML predictions")
+                    if len(signature_counts) == 1:
+                        st.warning(f"All {len(ml_rows)} matches share the same ML prediction signature.")
+                    else:
+                        repeated = sum(1 for count in signature_counts.values() if count > 1)
+                        st.caption(f"Similarity groups: {repeated} repeated signatures across {len(signature_counts)} unique patterns.")
                     show_dataframe(df_ml, stretch=stretch_charts)
 
                     # Summary statistics
@@ -857,10 +979,26 @@ def main():
                 if rows:
                     df_parsed = pd.DataFrame(rows)
                     # Sort by league then total desc
-                    df_parsed = df_parsed.sort_values(['League','Total'], ascending=[True, False])
+                    df_parsed = df_parsed.sort_values(['League', 'Total'], ascending=[True, False])
 
                     st.subheader("📈 Corner Predictions Table")
                     show_dataframe(df_parsed, stretch=stretch_charts)
+                    corner_download_payload = build_json_download_payload(
+                        mode='corner_predictions',
+                        results=df_parsed,
+                        source_file=parsed_path,
+                        filters={
+                            'selected_leagues': selected_leagues,
+                            'min_corners': min_corners,
+                            'team_search': team_search,
+                        },
+                        metadata={'match_count': len(df_parsed)}
+                    )
+                    render_json_download(
+                        '⬇️ Download current corner predictions as JSON',
+                        corner_download_payload,
+                        f"corner_predictions_current_view_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                    )
 
                     # Detailed match cards
                     st.subheader("🎯 Detailed Match Analysis")
