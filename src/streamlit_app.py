@@ -515,6 +515,56 @@ def main():
                             download_payload,
                             f"{Path(selected_file).stem}_current_view.json"
                         )
+                        
+                        # NEW: Combo Markets Section
+                        st.markdown("---")
+                        st.subheader("🎯 Combo Market Opportunities")
+                        
+                        combo_rows = []
+                        for league, league_matches in matches.items():
+                            for m in league_matches:
+                                match_str = m.get('match', '')
+                                if ' v ' in match_str:
+                                    home, away = match_str.split(' v ', 1)
+                                else:
+                                    home, away = match_str, ''
+                                
+                                # Extract combo picks if available
+                                combo_picks = m.get('combo_picks', [])
+                                if combo_picks:
+                                    for combo in combo_picks:
+                                        combo_rows.append({
+                                            'League': league,
+                                            'Match': f"{home} vs {away}",
+                                            'Combo Type': combo.get('market', ''),
+                                            'Selection': combo.get('selection', ''),
+                                            'Probability': f"{float(combo.get('prob', 0))*100:.1f}%",
+                                            'Odds': f"{float(combo.get('odds', 0)):.2f}",
+                                            'EV %': f"{float(combo.get('ev', 0)):+.1f}%",
+                                            'Recommendation': '✅ BET' if float(combo.get('ev', 0)) > 5 else '⚠️ MONITOR'
+                                        })
+                        
+                        if combo_rows:
+                            df_combos = pd.DataFrame(combo_rows)
+                            st.dataframe(df_combos, use_container_width=True)
+                            
+                            # Summary statistics
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("🎲 Total Combos", len(combo_rows))
+                            with col2:
+                                evs = [float(r['EV %'].rstrip('%')) for r in combo_rows]
+                                avg_ev = np.mean(evs) if evs else 0
+                                st.metric("📊 Avg EV %", f"{avg_ev:+.1f}%")
+                            with col3:
+                                high_ev = sum(1 for r in combo_rows if float(r['EV %'].rstrip('%')) > 5)
+                                st.metric("⭐ High Value", high_ev)
+                            with col4:
+                                odds = [float(r['Odds']) for r in combo_rows]
+                                avg_odds = np.mean(odds) if odds else 0
+                                st.metric("🎯 Avg Odds", f"{avg_odds:.2f}")
+                        else:
+                            st.info("💡 No combo market opportunities found in current selections.")
                     else:
                         st.info("No matches to display in consolidated file.")
             else:
@@ -552,6 +602,51 @@ def main():
                             download_payload,
                             f"{Path(selected_file).stem}_current_view.json"
                         )
+                        
+                        # NEW: Combo Markets Section for Per-League View
+                        st.markdown("---")
+                        st.subheader("🎯 Combo Market Opportunities")
+                        
+                        combo_rows = []
+                        for s in suggestions:
+                            home = s.get('home', '')
+                            away = s.get('away', '')
+                            
+                            # Extract combo picks if available
+                            combo_picks = s.get('combo_picks', [])
+                            if combo_picks:
+                                for combo in combo_picks:
+                                    combo_rows.append({
+                                        'Match': f"{home} vs {away}",
+                                        'Combo Type': combo.get('market', ''),
+                                        'Selection': combo.get('selection', ''),
+                                        'Probability': f"{float(combo.get('prob', 0))*100:.1f}%",
+                                        'Odds': f"{float(combo.get('odds', 0)):.2f}",
+                                        'EV %': f"{float(combo.get('ev', 0)):+.1f}%",
+                                        'Recommendation': '✅ BET' if float(combo.get('ev', 0)) > 5 else '⚠️ MONITOR'
+                                    })
+                        
+                        if combo_rows:
+                            df_combos = pd.DataFrame(combo_rows)
+                            st.dataframe(df_combos, use_container_width=True)
+                            
+                            # Summary statistics
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("🎲 Total Combos", len(combo_rows))
+                            with col2:
+                                evs = [float(r['EV %'].rstrip('%')) for r in combo_rows]
+                                avg_ev = np.mean(evs) if evs else 0
+                                st.metric("📊 Avg EV %", f"{avg_ev:+.1f}%")
+                            with col3:
+                                high_ev = sum(1 for r in combo_rows if float(r['EV %'].rstrip('%')) > 5)
+                                st.metric("⭐ High Value", high_ev)
+                            with col4:
+                                odds = [float(r['Odds']) for r in combo_rows]
+                                avg_odds = np.mean(odds) if odds else 0
+                                st.metric("🎯 Avg Odds", f"{avg_odds:.2f}")
+                        else:
+                            st.info("💡 No combo market opportunities found in this league.")
                     else:
                         st.info("No matches to display in this file.")
     elif app_mode == "ML Predictions":

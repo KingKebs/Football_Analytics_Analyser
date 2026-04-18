@@ -279,13 +279,254 @@ def extract_markets_from_score_matrix(mat: pd.DataFrame, min_confidence: float =
         '12': pH_dc + pA_dc,
     }
 
-    # Filter and log high-confidence markets
+    # Filter and log high-confidence markets, but ALWAYS include OU markets in full for combo analysis
     selected = {}
     for market, options in markets.items():
-        selected[market] = {k: v for k, v in options.items() if v >= min_confidence}
+        if market == 'OU':
+            # Always return BOTH Under and Over for all thresholds for combo market analysis
+            selected[market] = options
+        else:
+            # For other markets, apply confidence filter
+            selected[market] = {k: v for k, v in options.items() if v >= min_confidence}
         if selected[market]:
             logging.info(f"Selected {market} markets: {selected[market]}")
     return selected
+
+
+# --- ALGORITHM 4B: COMBO MARKET EXTRACTION ---
+
+def extract_combo_markets(mat: pd.DataFrame, min_confidence: float = 0.6) -> Dict[str, Dict[str, float]]:
+    """
+    Algorithm 4B: Combo Market Extraction
+
+    Calculates compound market probabilities from score probability matrix.
+    Combos are correlated multi-leg markets that often have better odds than independent legs.
+
+    Combo Markets:
+    - 1X2 & Over/Under at various thresholds (1.5, 2.5, 3.5, 4.5)
+    - 1X2 & BTTS (Match outcome & Both Teams To Score)
+    - Total & BTTS (Total goals & Both Teams To Score)
+    - Double Chance & BTTS
+
+    Value Advantage:
+    Markets are NOT independent - correlations create opportunities:
+    - Strong attacking team = higher xG AND more likely to win/score
+    - Defensive team = lower totals AND less likely to concede both
+    Bookies often price assuming independence → you exploit correlation!
+
+    Formula:
+    P(1X2=Home AND Total<=1.5) = Σ[scores where Home wins AND goals<=1]
+
+    Args:
+        mat: Score probability matrix from Algorithm 4
+        min_confidence: Minimum probability threshold for inclusion
+
+    Returns:
+        Dictionary with combo market probabilities organized by combo type
+    """
+    max_goals = mat.shape[0] - 1
+
+    # Initialize combo probability containers
+    combos = {
+        '1X2_OU': {},          # 1X2 & Over/Under combinations
+        '1X2_BTTS': {},        # 1X2 & Both Teams To Score
+        'OU_BTTS': {},         # Over/Under & BTTS (multiple thresholds)
+        'DC_BTTS': {}          # Double Chance & BTTS
+    }
+
+    # --- COMBO 1: 1X2 & Over/Under (1.5, 2.5, 3.5, 4.5) ---
+    # Example: "Home Win AND Under 2.5 goals" is a single combo bet
+    for threshold in [1.5, 2.5, 3.5, 4.5]:
+        threshold_int = int(threshold)
+
+        p_home_under = 0.0
+        p_home_over = 0.0
+        p_draw_under = 0.0
+        p_draw_over = 0.0
+        p_away_under = 0.0
+        p_away_over = 0.0
+
+        for hg in range(max_goals + 1):
+            for ag in range(max_goals + 1):
+                p = mat.loc[hg, ag]
+                total = hg + ag
+
+                # Categorize by outcome AND total
+                if hg > ag:  # Home Win
+                    if total <= threshold_int:
+                        p_home_under += p
+                    else:
+                        p_home_over += p
+                elif hg == ag:  # Draw
+                    if total <= threshold_int:
+                        p_draw_under += p
+                    else:
+                        p_draw_over += p
+                else:  # Away Win
+                    if total <= threshold_int:
+                        p_away_under += p
+                    else:
+                        p_away_over += p
+
+        # Store as separate market type
+        combo_key = f"1X2_OU{threshold}"
+        combos['1X2_OU'][combo_key] = {
+            'Home_Under': p_home_under,
+            'Home_Over': p_home_over,
+            'Draw_Under': p_draw_under,
+            'Draw_Over': p_draw_over,
+            'Away_Under': p_away_under,
+            'Away_Over': p_away_over
+        }
+
+    # --- COMBO 2: 1X2 & BTTS ---
+    # Example: "Home Win AND Both Teams To Score"
+    p_home_btts_yes = 0.0
+    p_home_btts_no = 0.0
+    p_draw_btts_yes = 0.0
+    p_draw_btts_no = 0.0
+    p_away_btts_yes = 0.0
+    p_away_btts_no = 0.0
+
+    for hg in range(max_goals + 1):
+        for ag in range(max_goals + 1):
+            p = mat.loc[hg, ag]
+            btts = hg > 0 and ag > 0  # Both teams scored
+
+            if hg > ag:  # Home Win
+                if btts:
+                    p_home_btts_yes += p
+                else:
+                    p_home_btts_no += p
+            elif hg == ag:  # Draw
+                if btts:
+                    p_draw_btts_yes += p
+                else:
+                    p_draw_btts_no += p
+            else:  # Away Win
+                if btts:
+                    p_away_btts_yes += p
+                else:
+                    p_away_btts_no += p
+
+    combos['1X2_BTTS'] = {
+        'Home_BTTS_Yes': p_home_btts_yes,
+        'Home_BTTS_No': p_home_btts_no,
+        'Draw_BTTS_Yes': p_draw_btts_yes,
+        'Draw_BTTS_No': p_draw_btts_no,
+        'Away_BTTS_Yes': p_away_btts_yes,
+        'Away_BTTS_No': p_away_btts_no
+    }
+
+    # --- COMBO 3: Total & BTTS at multiple thresholds ---
+    # Example: "Over 2.5 goals AND Both Teams To Score"
+    for threshold in [1.5, 2.5, 3.5]:
+        threshold_int = int(threshold)
+
+        p_under_btts_yes = 0.0
+        p_under_btts_no = 0.0
+        p_over_btts_yes = 0.0
+        p_over_btts_no = 0.0
+
+        for hg in range(max_goals + 1):
+            for ag in range(max_goals + 1):
+                p = mat.loc[hg, ag]
+                total = hg + ag
+                btts = hg > 0 and ag > 0
+
+                if total <= threshold_int:
+                    if btts:
+                        p_under_btts_yes += p
+                    else:
+                        p_under_btts_no += p
+                else:
+                    if btts:
+                        p_over_btts_yes += p
+                    else:
+                        p_over_btts_no += p
+
+        combo_key = f"OU_BTTS{threshold}"
+        combos['OU_BTTS'][combo_key] = {
+            'Under_BTTS_Yes': p_under_btts_yes,
+            'Under_BTTS_No': p_under_btts_no,
+            'Over_BTTS_Yes': p_over_btts_yes,
+            'Over_BTTS_No': p_over_btts_no
+        }
+
+    # --- COMBO 4: Double Chance & BTTS ---
+    # Example: "Home or Draw AND Both Teams To Score"
+    p_1x_btts_yes = 0.0  # 1X (Home or Draw) & BTTS
+    p_1x_btts_no = 0.0
+    p_x2_btts_yes = 0.0  # X2 (Draw or Away) & BTTS
+    p_x2_btts_no = 0.0
+    p_12_btts_yes = 0.0  # 12 (Home or Away) & BTTS
+    p_12_btts_no = 0.0
+
+    for hg in range(max_goals + 1):
+        for ag in range(max_goals + 1):
+            p = mat.loc[hg, ag]
+            btts = hg > 0 and ag > 0
+
+            # 1X = Home or Draw
+            if hg >= ag:
+                if btts:
+                    p_1x_btts_yes += p
+                else:
+                    p_1x_btts_no += p
+            else:
+                if btts:
+                    p_1x_btts_no += p  # Not 1X
+
+            # X2 = Draw or Away
+            if hg <= ag:
+                if btts:
+                    p_x2_btts_yes += p
+                else:
+                    p_x2_btts_no += p
+            else:
+                if btts:
+                    p_x2_btts_no += p  # Not X2
+
+            # 12 = Home or Away (not Draw)
+            if hg != ag:
+                if btts:
+                    p_12_btts_yes += p
+                else:
+                    p_12_btts_no += p
+            else:
+                if btts:
+                    p_12_btts_no += p  # Not 12 (it's a draw)
+
+    combos['DC_BTTS'] = {
+        '1X_BTTS_Yes': p_1x_btts_yes,
+        '1X_BTTS_No': p_1x_btts_no,
+        'X2_BTTS_Yes': p_x2_btts_yes,
+        'X2_BTTS_No': p_x2_btts_no,
+        '12_BTTS_Yes': p_12_btts_yes,
+        '12_BTTS_No': p_12_btts_no
+    }
+
+    # Filter by min_confidence and flatten structure
+    filtered_combos = {}
+    total_combos = 0
+    for combo_type, options in combos.items():
+        if isinstance(options, dict) and len(options) > 0:
+            # For nested dicts (like 1X2_OU which has multiple thresholds)
+            if all(isinstance(v, dict) for v in options.values()):
+                filtered_combos[combo_type] = {}
+                for key, subdict in options.items():
+                    filtered_combos[combo_type][key] = {
+                        k: v for k, v in subdict.items() if v >= min_confidence
+                    }
+                    total_combos += len(filtered_combos[combo_type][key])
+            else:
+                filtered_combos[combo_type] = {
+                    k: v for k, v in options.items() if v >= min_confidence
+                }
+                total_combos += len(filtered_combos[combo_type])
+
+    logging.info(f"Extracted {total_combos} combo market options")
+    return filtered_combos
 
 
 # --- ALGORITHM 6: RECENT FORM (EXPONENTIAL DECAY) ---
@@ -866,6 +1107,7 @@ ALGORITHM_INFO = {
     2: "Expected Goals (xG) Estimation - Multiplicative model with home advantage",
     3: "Poisson Probability Distribution - Mathematical foundation for goal modeling",
     4: "Score Probability Matrix - All possible match score probabilities",
+    4.1: "Combo Market Extraction - 1X2 & Over/Under, 1X2 & BTTS, Total & BTTS, DC & BTTS",
     5: "Market Probability Extraction - Converts scores to betting markets",
     6: "Recent Form Analysis - Exponential decay weighting of recent matches",
     7: "Form-Season Blending - Weighted average of season stats and recent form",

@@ -80,7 +80,11 @@ from algorithms import (
     fit_rating_to_prob_models,
     rating_probabilities_from_rating,
     merge_form_into_strengths,
+    extract_combo_markets,
 )
+
+# Combo Markets Utilities
+from combo_market_utils import detect_combo_value
 
 # Logging
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s', datefmt='%H:%M:%S')
@@ -494,6 +498,33 @@ def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: 
     markets = extract_markets_from_score_matrix(mat, min_confidence=min_confidence, external_probs=external_probs)
     corners = estimate_corners_and_cards(xg_home, xg_away)
 
+    # NEW: Extract Combo Markets (Algorithm 4B)
+    try:
+        combos = extract_combo_markets(mat, min_confidence=max(0.30, min_confidence - 0.2))
+        combo_picks = []
+        if combos:
+            value_combos = detect_combo_value(combos, markets, min_ev_threshold=0.005)  # Lowered from 0.03 to 0.005 (0.5%)
+            # Include both BET (EV > 0.5%) and MONITOR (positive EV) recommendations
+            for opp in value_combos:
+                ev_pct = float(opp.get('ev_percentage', 0))
+                recommendation = opp.get('recommendation', 'MONITOR')
+                # Include high-value combos (BET) and moderate-value ones (MONITOR with positive EV)
+                if (recommendation == 'BET' and ev_pct > 0.5) or (recommendation == 'MONITOR' and ev_pct > 0):
+                    combo_picks.append({
+                        'market': f"COMBO_{opp['combo']}",
+                        'selection': opp['combo'],
+                        'prob': float(opp['combo_probability']),
+                        'odds': float(opp['combo_odds']),
+                        'ev': ev_pct
+                    })
+            if combo_picks:
+                logging.debug(f"Found {len(combo_picks)} combo opportunities for {home_team} vs {away_team}")
+        else:
+            logging.debug(f"No combos extracted for {home_team} vs {away_team}")
+    except Exception as e:
+        logging.debug(f"Combo market extraction failed for {home_team} vs {away_team}: {e}")
+        combo_picks = []
+
     picks = []
     one_x_two = markets.get('1X2', {})
     dc_markets = markets.get('DC', {}) if enable_double_chance else {}
@@ -550,6 +581,8 @@ def build_single_match_suggestion(home_team: str, away_team: str, strengths_df: 
         'markets': markets,
         'corners_cards': corners,
         'picks': picks,
+        'combo_picks': combo_picks,
+        'combo_ev_avg': np.mean([p['ev'] for p in combo_picks]) if combo_picks else 0,
         'score_matrix': mat.to_dict(),
     }
 
@@ -1193,6 +1226,20 @@ def _create_consolidated_output(league_results: Dict[str, Dict], leagues: List[s
                         'probability': f"{p['prob']*100:.1f}%",
                         'odds': f"{p['odds']:.2f}"
                     })
+
+                # NEW: Add combo picks if available
+                combo_picks_list = []
+                for c in s.get('combo_picks', []):
+                    combo_picks_list.append({
+                        'market': c.get('market', ''),
+                        'selection': c.get('selection', ''),
+                        'probability': f"{float(c.get('prob', 0))*100:.1f}%",
+                        'odds': f"{float(c.get('odds', 0)):.2f}",
+                        'ev': f"{float(c.get('ev', 0)):+.1f}%"
+                    })
+                
+                if combo_picks_list:
+                    match_data['combo_picks'] = combo_picks_list
 
                 # Add ML predictions if available
                 if 'ml_prediction' in s:
