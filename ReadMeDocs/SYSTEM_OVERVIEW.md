@@ -159,15 +159,13 @@ setup.py                               Project validator
 config.example.yaml                    Configuration template
 ```
 
-### Documentation (NEW)
+### Documentation
 ```
-IMPLEMENTATION_SUMMARY.md              This implementation overview
-PROJECT_STRUCTURE_ANALYSIS.md          Detailed architecture audit
-QUICK_REFERENCE.md                     User quick-start guide
-ALGORITHMS.md                          Algorithm documentation (existing)
-ENHANCEMENTS_TO_SCRIPT.md             Enhancement roadmap (existing)
-README.md                              Project overview (existing)
-README_Downloader_Script.md           Downloader documentation (existing)
+ReadMeDocs/INDEX.md                    Canonical documentation index
+ReadMeDocs/QUICK_REFERENCE.md          CLI commands and flags
+ReadMeDocs/SYSTEM_OVERVIEW.md          This architecture overview
+ReadMeDocs/PROJECT_STRUCTURE_ANALYSIS.md  Directory and module map
+AGENTS.md                              Agent / contributor operating notes
 ```
 
 ### Data Directory
@@ -516,9 +514,9 @@ python data_manager.py --manifest
 | corners_analysis.py | Python | 600+ | Corner prediction |
 | setup.py | Python | 350+ | Project validator |
 | config.example.yaml | Config | 50+ | Configuration template |
-| IMPLEMENTATION_SUMMARY.md | Docs | 400+ | This document |
-| PROJECT_STRUCTURE_ANALYSIS.md | Docs | 300+ | Architecture audit |
-| QUICK_REFERENCE.md | Docs | 350+ | User guide |
+| PROJECT_STRUCTURE_ANALYSIS.md | Docs | Architecture audit |
+| QUICK_REFERENCE.md | Docs | User CLI guide |
+| INDEX.md | Docs | Documentation index |
 
 **Total New Code:** 2850+ lines  
 **Total New Docs:** 1050+ lines  

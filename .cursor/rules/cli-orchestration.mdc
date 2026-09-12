@@ -1,0 +1,35 @@
+---
+description: Unified CLI dispatcher conventions — task routing, flags, and required src modules
+globs: cli.py
+alwaysApply: false
+---
+
+# CLI Orchestration
+
+`cli.py` is a dispatcher only. Add flags on the parser, then forward argv into the matching `src/` script. Do not put prediction or training logic in `FootballAnalyticsCLI`.
+
+## Task → required modules
+
+| Task | `src/` modules |
+|---|---|
+| `full-league` | `automate_football_analytics_fullLeague.py`, `algorithms.py`, `ml_training.py`, `ml_evaluation.py` |
+| `single-match` | `automate_football_analytics.py`, `algorithms.py` |
+| `download` | `download_all_tabs.py` |
+| `download-fixtures` | `fixtures_downloader.py` |
+| `organize` | `organize_structure.py` |
+| `validate` | `check_downloaded_data.py` |
+| `corners` | `corners_analysis.py`, `automate_corner_predictions.py` |
+| `analyze-corners` | `corners_analysis.py` |
+| `view` | `view_suggestions.py` |
+| `backtest` | `analyze_suggestions_results.py` |
+| `convert-upcoming` | `convert_upcoming_matches.py` |
+
+When adding a task: update `REQUIRED_MODULES`, add a `task_*` method, and register the choice on `--task`.
+
+## Flag pitfalls
+
+- `--leagues` is a comma list. `--league ALL` without `--use-parsed-all` looks for `football-data/all-euro-football/ALL.csv` and fails.
+- `--use-parsed-all` reads `todays_fixtures_<YYYYMMDD>` from `data/analysis/` then `data/`.
+- Team names for `--home` / `--away` / `--home-team` are case-sensitive and must match historical CSVs.
+
+See `ReadMeDocs/QUICK_REFERENCE.md` and skill `complete-analysis-pipeline`.

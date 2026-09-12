@@ -1,0 +1,30 @@
+---
+description: Goal-market ML pipeline — features, recency weighting, train/predict modes, and CV
+globs: src/ml_*.py
+alwaysApply: false
+---
+
+# ML Pipeline
+
+Read `ReadMeDocs/ML_MODE_GUIDE.md` before changing training or features. Use skill `machine-learning-workflow` for CLI runs.
+
+## Modules
+
+- `ml_features.py` — rolling form, interactions, `TRAIN_FEATURE_COLUMNS`
+- `ml_training.py` — RF (+ optional XGB) for TotalGoals / 1X2 / BTTS
+- `ml_evaluation.py` — CV metrics and ML-vs-Poisson deltas
+- `ml_utils.py` — `safe_import_xgboost()` fallback (RF-only if XGB missing)
+
+## Rules
+
+- Default `--ml-mode off`. Training happens implicitly in `predict` if models are not loaded.
+- Require `--ml-min-samples` (default 300). Do not silently train on tiny sets.
+- Recency: `weight_i = decay^age_index` (default `--ml-decay 0.85`).
+- Persist only with `--ml-save-models` → `models/ml_models_<LEAGUE>_<TIMESTAMP>.pkl`.
+- Keep feature order identical at train and predict time (`TRAIN_FEATURE_COLUMNS`).
+- If XGBoost is unavailable, train RF only — do not fail the run.
+
+```bash
+python cli.py --task full-league --league E0 --ml-mode train --ml-validate
+python cli.py --task full-league --league E0 --ml-mode predict --ml-algorithms rf,xgb
+```

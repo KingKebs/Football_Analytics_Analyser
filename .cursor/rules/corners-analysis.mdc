@@ -1,0 +1,29 @@
+---
+description: Corner pattern analysis and 1H/2H prediction conventions
+globs: src/corners_analysis.py,src/automate_corner_predictions.py
+alwaysApply: false
+---
+
+# Corner Analysis
+
+1H/2H splits are **statistical** (team half-split ratios + trained models). Never hard-code 50/50 or “more corners after half-time”.
+
+Read `ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md`, `ReadMeDocs/WORKFLOW_GUIDE.md`, and skill `corner-prediction`. There is no `CORNERS_ANALYSIS_FLOW.md` — use those docs plus `SCRIPT_FLOW_DIAGRAM.md`.
+
+## Scripts
+
+- `corners_analysis.py` — features, correlations, team stats, single-match predict, `--train-model`
+- `automate_corner_predictions.py` — batch from a match log (preferred for multi-match)
+
+```bash
+python cli.py --task corners --use-parsed-all --min-team-matches 5 --corners-use-ml-prediction --verbose
+python cli.py --task corners --input tmp/corners/YYMMDD_match_games.log --leagues E2,E3 --train-model --force --auto --mode fast
+```
+
+## Rules
+
+- Skip teams below `--min-team-matches` (default 5).
+- `--use-parsed-all` processes only leagues present in `todays_fixtures_*`.
+- Outputs go to `data/corners/` (`parsed_corners_predictions_*.json`, `batch_predictions_*.json`).
+- Prefer `--mode fast` (cached team stats) unless the user asks for a full rebuild.
+- Monte Carlo ranges: `--corners-mc-samples` default 1000.
