@@ -1,0 +1,35 @@
+---
+description: Data download, validation, organization, and archival conventions
+globs: src/data_manager.py,src/download_all_tabs.py,src/organize_structure.py,src/check_downloaded_data.py,src/fixtures_downloader.py,src/convert_upcoming_matches.py
+alwaysApply: false
+---
+
+# Data Management
+
+Always validate or download before analysis. Preview destructive work with `--dry-run`.
+
+Read `ReadMeDocs/FILE_MANAGEMENT_GUIDE.md` and skill `data-lifecycle`.
+
+## Layout
+
+- `football-data/` — raw league CSVs from football-data.co.uk (`E0_2425.csv`)
+- `data/analysis/` — suggestions + `todays_fixtures_YYYYMMDD.json`
+- `data/raw/` — upcoming match JSON
+- `data/corners/` — corner outputs
+- `data/team_stats/` — strength matrices
+- `data/archive/` — files older than 7 days
+- `data/MANIFEST.json` — inventory
+
+## Canonical commands
+
+```bash
+python cli.py --task download --leagues E0,SP1 --season AUTO
+python cli.py --task download-fixtures --update-today
+python cli.py --task convert-upcoming --file data/raw/upcomingMatches.json --output-dir data/analysis
+python cli.py --task validate --check-all
+python cli.py --task organize
+python src/data_manager.py --full-cleanup --dry-run
+python src/data_manager.py --manifest
+```
+
+Do not write outside `data/`, `football-data/`, `logs/`, and `models/` unless the user asks.

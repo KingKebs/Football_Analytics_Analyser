@@ -17,10 +17,10 @@ This workflow now includes advanced modeling improvements:
 ### Clean Data Directory (Recommended First Step)
 ```bash
 # Preview what will be organized (dry run)
-python3 organize_structure.py --dry-run
+python3 src/organize_structure.py --dry-run
 
 # Organize the data directory
-python3 organize_structure.py
+python3 src/organize_structure.py
 ```
 
 This organizes files into:
@@ -34,7 +34,7 @@ This organizes files into:
 
 ### 1. Parse Match Log → Extract Fixtures
 ```bash
-python3 parse_match_log.py --input tmp/corners/251115_match_games.log --league-code E2
+python3 src/parse_match_log.py --input tmp/corners/251115_match_games.log --league-code E2
 ```
 - Reads raw match log
 - Extracts scheduled fixtures (ignores postponed by default)
@@ -42,7 +42,7 @@ python3 parse_match_log.py --input tmp/corners/251115_match_games.log --league-c
 
 ### 2. Run Corners Analysis → Build Team Stats
 ```bash
-python3 corners_analysis.py --league E2 --no-prompt
+python3 src/corners_analysis.py --league E2 --no-prompt
 ```
 - Aggregates historical match data for E2
 - Computes team corner statistics (home/away)
@@ -51,7 +51,7 @@ python3 corners_analysis.py --league E2 --no-prompt
 
 ### 3. Generate Predictions → For Each Fixture
 ```bash
-python3 corners_analysis.py --league E2 --home-team Burton --away-team Blackpool
+python3 src/corners_analysis.py --league E2 --home-team Burton --away-team Blackpool
 ```
 - Predicts total corners (mean + range)
 - Predicts 1H vs 2H split
@@ -62,27 +62,27 @@ python3 corners_analysis.py --league E2 --home-team Burton --away-team Blackpool
 
 ### Basic Usage
 ```bash
-python3 automate_corner_predictions.py --input tmp/corners/251115_match_games.log --league E2
+python3 src/automate_corner_predictions.py --input tmp/corners/251115_match_games.log --league E2
 ```
 - Prompts you for each fixture (Y/n/q)
 - Generates predictions interactively
 
 ### Auto Mode (No Prompts)
 ```bash
-python3 automate_corner_predictions.py --input tmp/corners/251115_match_games.log --league E2 --auto
+python3 src/automate_corner_predictions.py --input tmp/corners/251115_match_games.log --league E2 --auto
 ```
 - Processes all fixtures automatically
 - Exports batch predictions JSON
 
 ### With Season Filter
 ```bash
-python3 automate_corner_predictions.py --input tmp/corners/251115_match_games.log --league E2 --seasons 2425 --auto
+python3 src/automate_corner_predictions.py --input tmp/corners/251115_match_games.log --league E2 --seasons 2425 --auto
 ```
 - Uses only 2024/25 season data
 
 ### Force Re-Analysis
 ```bash
-python3 automate_corner_predictions.py --input tmp/corners/251115_match_games.log --league E2 --auto --force
+python3 src/automate_corner_predictions.py --input tmp/corners/251115_match_games.log --league E2 --auto --force
 ```
 - Re-runs corners analysis even if done today
 
@@ -147,7 +147,7 @@ Suggested 1H Corner Lines:
 ### "Home team not found"
 - Team name mismatch between log and historical data
 - Script uses fuzzy matching (default)
-- Check actual team names: `python3 corners_analysis.py --league E2 --list-teams`
+- Check actual team names: `python3 src/corners_analysis.py --league E2 --list-teams`
 
 ### "No CSV files found"
 - Need to download data first: `python3 cli.py --task download --leagues E2`

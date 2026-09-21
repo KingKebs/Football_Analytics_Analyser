@@ -234,17 +234,17 @@ python cli.py --task corners --home-team Arsenal --away-team Chelsea --enable-do
 ### Manage Data
 ```bash
 # Generate manifest of all files
-python data_manager.py --manifest
+python src/data_manager.py --manifest
 
 # List files by league
-python data_manager.py --list-leagues
+python src/data_manager.py --list-leagues
 
 # Archive files older than 7 days
-python data_manager.py --archive --days 7
+python src/data_manager.py --archive --days 7
 
 # Full cleanup (manifest + archive + validate)
-python data_manager.py --full-cleanup --dry-run  # Preview first
-python data_manager.py --full-cleanup             # Execute
+python src/data_manager.py --full-cleanup --dry-run  # Preview first
+python src/data_manager.py --full-cleanup             # Execute
 ```
 
 ---
@@ -427,16 +427,16 @@ streamlit run src/streamlit_app.py
 ### Workflow 5: Cleanup & Maintenance
 ```bash
 # Preview what will be archived
-python data_manager.py --full-cleanup --dry-run
+python src/data_manager.py --full-cleanup --dry-run
 
 # Validate JSON
-python data_manager.py --validate
+python src/data_manager.py --validate
 
 # Generate manifest
-python data_manager.py --manifest
+python src/data_manager.py --manifest
 
 # Execute cleanup
-python data_manager.py --full-cleanup
+python src/data_manager.py --full-cleanup
 ```
 
 ---

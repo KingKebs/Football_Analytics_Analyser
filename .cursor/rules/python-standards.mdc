@@ -1,0 +1,39 @@
+---
+description: Python coding standards for this analytics repo (overrides Magento/PHP workspace conventions)
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Python Standards
+
+Follow existing modules (`src/algorithms.py`, `src/ml_training.py`, `cli.py`), not Magento/PHP rules.
+
+## Style
+
+- PEP 8, 4-space indent, UTF-8, flake8 max line length **127**
+- Type hints on new public functions; `from __future__ import annotations` where the file already uses it
+- One module-level concern; keep CLI dispatch thin — logic stays in `src/`
+- Alphabetical `import` groups: stdlib, third party, local
+- Use `logging.getLogger(__name__)`; never swallow exceptions
+- Constructor promotion / interfaces / repositories do **not** apply here
+
+## Imports
+
+`cli.py` inserts `src/` on `sys.path`. Local imports are bare module names:
+
+```python
+from algorithms import compute_basic_strengths
+from ml_training import train_models
+```
+
+Tests add the project root via `tests/conftest.py`. New tests go in `tests/test_*.py`.
+
+## Commands
+
+```bash
+source venv/bin/activate
+pytest -v
+flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+```
+
+Target Python 3.9–3.11 (CI matrix). Do not add Magento copyright banners.

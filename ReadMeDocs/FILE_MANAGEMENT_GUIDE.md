@@ -40,7 +40,7 @@ Skip regenerating predictions if they already exist for today.
 
 **Usage:**
 ```bash
-python3 automate_corner_predictions.py --input <log> --leagues E2,E3 --auto --reuse-today
+python3 src/automate_corner_predictions.py --input <log> --leagues E2,E3 --auto --reuse-today
 ```
 
 **Behavior:**
@@ -74,7 +74,7 @@ At the end of every workflow run, **removes files older than 7 days**.
 
 ### Basic (default behavior - auto-cleanup duplicates)
 ```bash
-python3 automate_corner_predictions.py --input tmp/corners/251115_match_games.log --leagues E2,E3 --auto
+python3 src/automate_corner_predictions.py --input tmp/corners/251115_match_games.log --leagues E2,E3 --auto
 ```
 - Generates predictions
 - Removes duplicate files from today
@@ -82,7 +82,7 @@ python3 automate_corner_predictions.py --input tmp/corners/251115_match_games.lo
 
 ### Reuse existing predictions from today
 ```bash
-python3 automate_corner_predictions.py --input tmp/corners/251115_match_games.log --leagues E2,E3 --auto --reuse-today
+python3 src/automate_corner_predictions.py --input tmp/corners/251115_match_games.log --leagues E2,E3 --auto --reuse-today
 ```
 - Checks for existing predictions
 - If found, reuses them instead of regenerating
@@ -90,7 +90,7 @@ python3 automate_corner_predictions.py --input tmp/corners/251115_match_games.lo
 
 ### Force fresh analysis + predictions
 ```bash
-python3 automate_corner_predictions.py --input tmp/corners/251115_match_games.log --leagues E2,E3 --auto --force
+python3 src/automate_corner_predictions.py --input tmp/corners/251115_match_games.log --leagues E2,E3 --auto --force
 ```
 - Ignores existing analysis from today
 - Re-runs corners_analysis.py

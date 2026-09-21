@@ -30,7 +30,7 @@ Exeter
 **For batch predictions across multiple leagues with model training:**
 
 ```bash
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/251115_match_games.log \
   --leagues E2,E3 \
   --train-model \
@@ -70,10 +70,10 @@ python3 automate_corner_predictions.py \
 
 ```bash
 # For E2 (League Two)
-python3 corners_analysis.py --league E2 --no-prompt --train-model
+python3 src/corners_analysis.py --league E2 --no-prompt --train-model
 
 # For E3 (League One)
-python3 corners_analysis.py --league E3 --no-prompt --train-model
+python3 src/corners_analysis.py --league E3 --no-prompt --train-model
 ```
 
 **What this does:**
@@ -91,7 +91,7 @@ python3 corners_analysis.py --league E3 --no-prompt --train-model
 **For one specific match with full analysis:**
 
 ```bash
-python3 corners_analysis.py \
+python3 src/corners_analysis.py \
   --league E3 \
   --home-team "Notts Co" \
   --away-team "Harrogate" \
@@ -182,7 +182,7 @@ Total Corners Model (Weighted CV):
 
 ### Your log has E2 and E3 matches
 ```bash
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/251115_match_games.log \
   --leagues E2,E3 \
   --train-model \
@@ -192,7 +192,7 @@ python3 automate_corner_predictions.py \
 
 ### All Premier League + Championship
 ```bash
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/your_games.log \
   --leagues E0,E1 \
   --train-model \
@@ -202,7 +202,7 @@ python3 automate_corner_predictions.py \
 
 ### European leagues
 ```bash
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/your_games.log \
   --leagues SP1,D1,I1,F1 \
   --train-model \
@@ -217,7 +217,7 @@ python3 automate_corner_predictions.py \
 ### "Team not found"
 - The script uses fuzzy matching, but check team names in:
   ```bash
-  python3 corners_analysis.py --league E3 --list-teams
+  python3 src/corners_analysis.py --league E3 --list-teams
   ```
 
 ### "No CSV files found"
@@ -249,7 +249,7 @@ python3 automate_corner_predictions.py \
 **Most common workflow:**
 ```bash
 # Run everything for today's matches
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/251115_match_games.log \
   --leagues E2,E3 \
   --train-model \
@@ -271,3 +271,75 @@ cat data/corners/model_metrics_E3_*.json | jq '{r2: .rf_total_r2_cv_mean, mae: .
 
 **All Steps 1-4 improvements are automatically applied when you use `--train-model` flag!** 🎉
 
+
+
+---
+
+## Daily Analysis Workflow (`run_analysis_workflow.py`)
+
+For a combined goals + corners run across all upcoming fixtures use the
+orchestration script instead of calling `cli.py` tasks manually.
+
+### Quick start
+
+```bash
+# Interactive (recommended first time)
+python run_analysis_workflow.py --date 2026-02-11
+
+# Fully automated (cron / CI)
+python run_analysis_workflow.py --auto --verbose >> logs/workflow_$(date +%Y%m%d).log 2>&1
+
+# Override league detection
+python run_analysis_workflow.py --date 2026-02-11 --leagues E0,E2,E3
+```
+
+### What it does
+
+| Step | Action |
+|------|--------|
+| 1 | Read `data/raw/upcomingMatches.json` |
+| 2 | Auto-detect leagues from competition names |
+| 3 | Confirm leagues (skipped in `--auto`) |
+| 4 | Convert fixtures → `data/analysis/todays_fixtures_<DATE>.json` |
+| 5 | Full-league analysis with ML (`--ml-mode predict`) per league |
+| 6 | Corners analysis with ML for all detected leagues |
+
+### Outputs
+
+```
+data/analysis/
+├── full_league_suggestions_<LEAGUE>_<DATE>_*.json   # per-league
+└── consolidated_full_league_<DATE>_*.json           # all leagues
+
+data/corners/
+└── parsed_corners_predictions_<DATE>.json
+```
+
+All outputs are automatically picked up by the Streamlit dashboard
+(`streamlit run src/streamlit_app.py`).
+
+### CLI options
+
+| Flag | Purpose |
+|------|---------|
+| `--date YYYY-MM-DD` | Analysis date (default: today) |
+| `--leagues E0,E2` | Override auto-detected leagues |
+| `--auto` | Skip all confirmation prompts |
+| `--verbose` | Detailed logging |
+
+### Update league mappings
+
+Edit `LEAGUE_MAP` in `run_analysis_workflow.py`:
+
+```python
+LEAGUE_MAP = {
+    'Premier League': 'E0',
+    'My New Competition': 'XYZ',
+}
+```
+
+### Troubleshooting
+
+- **No leagues detected** — check `data/raw/upcomingMatches.json` is valid JSON and competition names match `LEAGUE_MAP`; use `--leagues` to override.
+- **Analysis failed** — check `logs/cli_*.log`; run with `--verbose`.
+- **Missing data** — run `python cli.py --task download --leagues E0,E2,E3 --season AUTO` first.

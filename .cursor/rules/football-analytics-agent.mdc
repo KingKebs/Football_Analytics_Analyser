@@ -1,0 +1,41 @@
+---
+description: Core agent context for Football Analytics Analyser — stack, CLI, leagues, and critical operating rules
+alwaysApply: true
+---
+
+# Football Analytics Analyser
+
+This repo is a **production Python** analytics system (default branch `dev`).
+It is **not** Magento/PHP. Do not add Vaimo copyright headers, Magento modules, or ObjectManager/repository patterns.
+
+## Operating rules
+
+1. **Data first** — download and validate before analysis.
+2. **ML** — require enough history (typically 2+ seasons; `--ml-min-samples` default 300).
+3. **Recency** — recent-form windows are last 6–20 matches (`--last-n` default 6).
+4. **Corners** — 1H/2H splits come from statistical models, never arbitrary halves.
+5. **Errors** — read `logs/cli_*.log` before guessing.
+6. **Config** — use `config.yaml` copied from `config.example.yaml`.
+7. **Leagues** — never pass `--leagues ALL` / `--league ALL` without `--use-parsed-all`.
+8. **Runtime** — activate `venv` (`source venv/bin/activate`) before Python commands.
+
+## Entry point
+
+Prefer `python cli.py --task <name>`. Do not invent new top-level scripts when a CLI task exists.
+
+Tasks: `full-league`, `single-match`, `download`, `download-fixtures`, `organize`, `validate`, `corners`, `analyze-corners`, `view`, `backtest`, `convert-upcoming`, `help`.
+
+Core modules live in `src/`. `cli.py` adds `src/` to `sys.path` — import as `algorithms`, not `src.algorithms`.
+
+## Leagues
+
+E0 E1 E2 E3 | D1 D2 | SP1 SP2 | I1 I2 | F1 F2 | N1 P1 | SC0–SC3 | B1 G1 T1 | EC
+
+## When to read docs / skills
+
+- Architecture → `ReadMeDocs/SYSTEM_OVERVIEW.md`
+- Commands → `ReadMeDocs/QUICK_REFERENCE.md`
+- Multi-step runs → skill `complete-analysis-pipeline`
+- ML → skill `machine-learning-workflow` + `ReadMeDocs/ML_MODE_GUIDE.md`
+- Corners → skill `corner-prediction` + `ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md`
+- Filesystem → skill `data-lifecycle` + `ReadMeDocs/FILE_MANAGEMENT_GUIDE.md`
