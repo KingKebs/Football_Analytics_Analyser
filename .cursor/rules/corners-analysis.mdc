@@ -8,7 +8,7 @@ alwaysApply: false
 
 1H/2H splits are **statistical** (team half-split ratios + trained models). Never hard-code 50/50 or “more corners after half-time”.
 
-Read `ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md`, `ReadMeDocs/WORKFLOW_GUIDE.md`, and skill `corner-prediction`. There is no `CORNERS_ANALYSIS_FLOW.md` — use those docs plus `SCRIPT_FLOW_DIAGRAM.md`.
+Read `ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md`, `ReadMeDocs/WORKFLOW_GUIDE.md`, and skill `corner-prediction`.
 
 ## Scripts
 

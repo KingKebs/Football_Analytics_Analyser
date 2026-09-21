@@ -11,8 +11,7 @@ Prefer `python cli.py --task <name>`. Activate `venv` first. **Data first** — 
 
 - Commands: [ReadMeDocs/QUICK_REFERENCE.md](../../../ReadMeDocs/QUICK_REFERENCE.md)
 - Architecture: [ReadMeDocs/SYSTEM_OVERVIEW.md](../../../ReadMeDocs/SYSTEM_OVERVIEW.md)
-- Module map: [ReadMeDocs/PROJECT_STRUCTURE_ANALYSIS.md](../../../ReadMeDocs/PROJECT_STRUCTURE_ANALYSIS.md)
-- Script order: [ReadMeDocs/SCRIPT_RELATIONSHIPS.md](../../../ReadMeDocs/SCRIPT_RELATIONSHIPS.md)
+- Module map: [ReadMeDocs/SYSTEM_OVERVIEW.md](../../../ReadMeDocs/SYSTEM_OVERVIEW.md)
 
 ## Preconditions
 

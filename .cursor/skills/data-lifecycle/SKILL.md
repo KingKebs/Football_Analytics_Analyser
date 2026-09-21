@@ -11,7 +11,7 @@ Read:
 
 - Inventory / archive: [ReadMeDocs/FILE_MANAGEMENT_GUIDE.md](../../../ReadMeDocs/FILE_MANAGEMENT_GUIDE.md)
 - Fixtures: [ReadMeDocs/FIXTURES_DOWNLOAD_GUIDE.md](../../../ReadMeDocs/FIXTURES_DOWNLOAD_GUIDE.md)
-- Scheduling: [ReadMeDocs/AUTOMATION_COMPARISON.md](../../../ReadMeDocs/AUTOMATION_COMPARISON.md)
+- Fixtures and scheduling: [ReadMeDocs/FIXTURES_DOWNLOAD_GUIDE.md](../../../ReadMeDocs/FIXTURES_DOWNLOAD_GUIDE.md)
 
 ## Download historical results
 

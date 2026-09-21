@@ -66,10 +66,10 @@ python cli.py --task <operation> [options]
 
 Maintains data directory hygiene:
 ```bash
-python data_manager.py --full-cleanup --dry-run  # Preview
-python data_manager.py --manifest                 # Inventory
-python data_manager.py --archive --days 7         # Archive old
-python data_manager.py --validate                 # Validate JSON
+python src/data_manager.py --full-cleanup --dry-run  # Preview
+python src/data_manager.py --manifest                 # Inventory
+python src/data_manager.py --archive --days 7         # Archive old
+python src/data_manager.py --validate                 # Validate JSON
 ```
 
 **Features:**
@@ -164,7 +164,7 @@ config.example.yaml                    Configuration template
 ReadMeDocs/INDEX.md                    Canonical documentation index
 ReadMeDocs/QUICK_REFERENCE.md          CLI commands and flags
 ReadMeDocs/SYSTEM_OVERVIEW.md          This architecture overview
-ReadMeDocs/PROJECT_STRUCTURE_ANALYSIS.md  Directory and module map
+ReadMeDocs/SYSTEM_OVERVIEW.md            Architecture and module map
 AGENTS.md                              Agent / contributor operating notes
 ```
 
@@ -281,7 +281,7 @@ python cli.py --task analyze-corners
 python cli.py --task view
 
 # Weekly cleanup
-python data_manager.py --archive --days 7
+python src/data_manager.py --archive --days 7
 ```
 
 ### Advanced Examples
@@ -293,7 +293,7 @@ python cli.py --task download --leagues E0,SP1,D1,F1,I1
 python cli.py --task full-league --league E0 --rating-model xg --last-n 10
 
 # Dry-run to preview
-python data_manager.py --full-cleanup --dry-run
+python src/data_manager.py --full-cleanup --dry-run
 
 # Verbose debugging
 python cli.py --task validate --check-all --verbose
@@ -316,7 +316,7 @@ python cli.py --task corners --file football-data/E0_2425.csv
 4. Run first analysis: `python cli.py --task full-league --league E0`
 
 ### Intermediate (2 hours)
-1. Read `PROJECT_STRUCTURE_ANALYSIS.md`
+1. Read `SYSTEM_OVERVIEW.md`
 2. Review `cli.py` code (understand structure)
 3. Review `data_manager.py` code
 4. Try all CLI tasks mentioned in QUICK_REFERENCE.md
@@ -363,7 +363,7 @@ pip install -r requirements.txt
 ### "File not found"
 ```bash
 # Check what files you have
-python data_manager.py --list-leagues
+python src/data_manager.py --list-leagues
 
 # Download missing league
 python cli.py --task download --leagues E0
@@ -372,7 +372,7 @@ python cli.py --task download --leagues E0
 ### "JSON decode error"
 ```bash
 # Validate all JSON files
-python data_manager.py --validate
+python src/data_manager.py --validate
 
 # If files are corrupted, rerun analysis
 python cli.py --task full-league --league E0
@@ -429,7 +429,7 @@ python cli.py --task full-league --league E0 > logs/scheduled.log 2>&1
   run: python cli.py --task full-league --league E0
   
 - name: Archive results
-  run: python data_manager.py --archive --days 30
+  run: python src/data_manager.py --archive --days 30
 ```
 
 ---
@@ -440,10 +440,10 @@ python cli.py --task full-league --league E0 > logs/scheduled.log 2>&1
 ```bash
 python cli.py --task help              # Full usage guide
 python cli.py --help                   # Argument reference
-python data_manager.py --help          # Data tool options
+python src/data_manager.py --help          # Data tool options
 python setup.py                        # Environment validation
 cat QUICK_REFERENCE.md                 # Quick start
-cat PROJECT_STRUCTURE_ANALYSIS.md      # Architecture
+cat SYSTEM_OVERVIEW.md                 # Architecture
 ```
 
 ### Check Logs
@@ -464,10 +464,10 @@ cat logs/cli_<timestamp>.log
 python cli.py --task full-league --league E0 --verbose
 
 # Dry-run preview
-python data_manager.py --full-cleanup --dry-run
+python src/data_manager.py --full-cleanup --dry-run
 
 # File manifest
-python data_manager.py --manifest
+python src/data_manager.py --manifest
 ```
 
 ---
@@ -514,7 +514,7 @@ python data_manager.py --manifest
 | corners_analysis.py | Python | 600+ | Corner prediction |
 | setup.py | Python | 350+ | Project validator |
 | config.example.yaml | Config | 50+ | Configuration template |
-| PROJECT_STRUCTURE_ANALYSIS.md | Docs | Architecture audit |
+| SYSTEM_OVERVIEW.md | Docs | Architecture overview |
 | QUICK_REFERENCE.md | Docs | User CLI guide |
 | INDEX.md | Docs | Documentation index |
 

@@ -1,7 +1,7 @@
 # Documentation Index
 
 **Last Updated:** September 2026  
-16 files — one topic per file, no duplicates.
+8 files — one canonical guide per topic.
 
 ---
 
@@ -24,8 +24,6 @@
 |------|---------------|
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | CLI cheat-sheet — commands, flags, league codes, output files, troubleshooting |
 | [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md) | Architecture, capabilities, data flow, deployment notes |
-| [PROJECT_STRUCTURE_ANALYSIS.md](PROJECT_STRUCTURE_ANALYSIS.md) | Directory layout, module map, known issues and trade-offs |
-| [README.md](README.md) | Project introduction and top-level summary |
 
 ### Workflows
 
@@ -33,24 +31,18 @@
 |------|---------------|
 | [WORKFLOW_GUIDE.md](WORKFLOW_GUIDE.md) | Corners pipeline (Steps 1-4) **and** daily `run_analysis_workflow.py` |
 | [FIXTURES_DOWNLOAD_GUIDE.md](FIXTURES_DOWNLOAD_GUIDE.md) | Automated fixtures download, scheduler, `--task download-fixtures` |
-| [AUTOMATION_COMPARISON.md](AUTOMATION_COMPARISON.md) | Manual (`corners_analysis.py`) vs automated (`automate_corner_predictions.py`) corner workflows |
 
 ### ML & modelling
 
 | File | What it covers |
 |------|---------------|
 | [ML_MODE_GUIDE.md](ML_MODE_GUIDE.md) | ML pipeline — train / predict / validate, feature engineering, model options |
-| [MODELING_PROGRESS.md](MODELING_PROGRESS.md) | Step-by-step corner model improvements (CV → RandomForest → recency → interactions) |
-| [ThisIsNotYetAmodel.md](ThisIsNotYetAmodel.md) | Practical guide for turning the repo into a rigorous predictive model (targets, pipelines, validation, audit) |
 
 ### Corners
 
 | File | What it covers |
 |------|---------------|
 | [CORNER_PREDICTIONS_GUIDE.md](CORNER_PREDICTIONS_GUIDE.md) | Corner market guide — theory, algorithms, outputs, interpreting predictions |
-| [CORNER_VS_FULLLEAGUE_COMPARISON.md](CORNER_VS_FULLLEAGUE_COMPARISON.md) | Comparison of corner-specific vs full-league analytics approaches |
-| [SCRIPT_FLOW_DIAGRAM.md](SCRIPT_FLOW_DIAGRAM.md) | Visual flow of how corner scripts call each other |
-| [SCRIPT_RELATIONSHIPS.md](SCRIPT_RELATIONSHIPS.md) | Dependency map for all scripts — what calls what |
 
 ### Niche markets & staking
 
@@ -76,9 +68,8 @@
 
 **Understand the architecture (1 h)**
 1. [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)
-2. [PROJECT_STRUCTURE_ANALYSIS.md](PROJECT_STRUCTURE_ANALYSIS.md)
-3. [SCRIPT_RELATIONSHIPS.md](SCRIPT_RELATIONSHIPS.md)
-4. Skim `cli.py` and `src/algorithms.py`
+2. [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
+3. Skim `cli.py` and `src/algorithms.py`
 
 **Daily automated workflow**
 1. [FIXTURES_DOWNLOAD_GUIDE.md](FIXTURES_DOWNLOAD_GUIDE.md) — set up fixture automation
@@ -88,8 +79,7 @@
 **ML & corners deep-dive**
 1. [ML_MODE_GUIDE.md](ML_MODE_GUIDE.md)
 2. [CORNER_PREDICTIONS_GUIDE.md](CORNER_PREDICTIONS_GUIDE.md)
-3. [MODELING_PROGRESS.md](MODELING_PROGRESS.md)
-4. [AUTOMATION_COMPARISON.md](AUTOMATION_COMPARISON.md)
+3. Review the corner section in [WORKFLOW_GUIDE.md](WORKFLOW_GUIDE.md)
 
 **Niche markets (Odd/Even, parlays)**
 1. [NICHE_MARKETS_GUIDE.md](NICHE_MARKETS_GUIDE.md)

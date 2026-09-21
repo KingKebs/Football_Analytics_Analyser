@@ -30,7 +30,7 @@ Exeter
 **For batch predictions across multiple leagues with model training:**
 
 ```bash
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/251115_match_games.log \
   --leagues E2,E3 \
   --train-model \
@@ -70,10 +70,10 @@ python3 automate_corner_predictions.py \
 
 ```bash
 # For E2 (League Two)
-python3 corners_analysis.py --league E2 --no-prompt --train-model
+python3 src/corners_analysis.py --league E2 --no-prompt --train-model
 
 # For E3 (League One)
-python3 corners_analysis.py --league E3 --no-prompt --train-model
+python3 src/corners_analysis.py --league E3 --no-prompt --train-model
 ```
 
 **What this does:**
@@ -91,7 +91,7 @@ python3 corners_analysis.py --league E3 --no-prompt --train-model
 **For one specific match with full analysis:**
 
 ```bash
-python3 corners_analysis.py \
+python3 src/corners_analysis.py \
   --league E3 \
   --home-team "Notts Co" \
   --away-team "Harrogate" \
@@ -182,7 +182,7 @@ Total Corners Model (Weighted CV):
 
 ### Your log has E2 and E3 matches
 ```bash
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/251115_match_games.log \
   --leagues E2,E3 \
   --train-model \
@@ -192,7 +192,7 @@ python3 automate_corner_predictions.py \
 
 ### All Premier League + Championship
 ```bash
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/your_games.log \
   --leagues E0,E1 \
   --train-model \
@@ -202,7 +202,7 @@ python3 automate_corner_predictions.py \
 
 ### European leagues
 ```bash
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/your_games.log \
   --leagues SP1,D1,I1,F1 \
   --train-model \
@@ -217,7 +217,7 @@ python3 automate_corner_predictions.py \
 ### "Team not found"
 - The script uses fuzzy matching, but check team names in:
   ```bash
-  python3 corners_analysis.py --league E3 --list-teams
+  python3 src/corners_analysis.py --league E3 --list-teams
   ```
 
 ### "No CSV files found"
@@ -249,7 +249,7 @@ python3 automate_corner_predictions.py \
 **Most common workflow:**
 ```bash
 # Run everything for today's matches
-python3 automate_corner_predictions.py \
+python3 src/automate_corner_predictions.py \
   --input tmp/corners/251115_match_games.log \
   --leagues E2,E3 \
   --train-model \

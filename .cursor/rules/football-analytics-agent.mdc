@@ -33,7 +33,7 @@ E0 E1 E2 E3 | D1 D2 | SP1 SP2 | I1 I2 | F1 F2 | N1 P1 | SC0–SC3 | B1 G1 T1 | E
 
 ## When to read docs / skills
 
-- Architecture → `ReadMeDocs/SYSTEM_OVERVIEW.md`, `ReadMeDocs/PROJECT_STRUCTURE_ANALYSIS.md`
+- Architecture → `ReadMeDocs/SYSTEM_OVERVIEW.md`
 - Commands → `ReadMeDocs/QUICK_REFERENCE.md`
 - Multi-step runs → skill `complete-analysis-pipeline`
 - ML → skill `machine-learning-workflow` + `ReadMeDocs/ML_MODE_GUIDE.md`

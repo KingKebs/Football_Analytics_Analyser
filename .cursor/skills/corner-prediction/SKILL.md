@@ -7,13 +7,10 @@ description: Analyze corner patterns and predict total / 1H / 2H corner markets 
 
 1H/2H splits are **statistical** (team ratios + trained models). Never use arbitrary 50/50 halves.
 
-There is no `ReadMeDocs/CORNERS_ANALYSIS_FLOW.md`. Use these instead:
+Read the method and batch workflow in:
 
-- Method: [ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md](../../../ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md)
-- Batch workflow: [ReadMeDocs/WORKFLOW_GUIDE.md](../../../ReadMeDocs/WORKFLOW_GUIDE.md)
-- Execution order: [ReadMeDocs/SCRIPT_FLOW_DIAGRAM.md](../../../ReadMeDocs/SCRIPT_FLOW_DIAGRAM.md)
-- Script roles: [ReadMeDocs/SCRIPT_RELATIONSHIPS.md](../../../ReadMeDocs/SCRIPT_RELATIONSHIPS.md)
-- Manual vs auto: [ReadMeDocs/AUTOMATION_COMPARISON.md](../../../ReadMeDocs/AUTOMATION_COMPARISON.md)
+- [ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md](../../../ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md)
+- [ReadMeDocs/WORKFLOW_GUIDE.md](../../../ReadMeDocs/WORKFLOW_GUIDE.md)
 
 ## Preconditions
 

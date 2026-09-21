@@ -48,10 +48,10 @@ This is **not** a Magento/PHP project. Do not apply Vaimo copyright headers, Mag
 
 ## Skill Docs (read when the task matches)
 
-- Architecture: `ReadMeDocs/SYSTEM_OVERVIEW.md`, `ReadMeDocs/PROJECT_STRUCTURE_ANALYSIS.md`
+- Architecture: `ReadMeDocs/SYSTEM_OVERVIEW.md`
 - Workflows / CLI: `ReadMeDocs/WORKFLOW_GUIDE.md`, `ReadMeDocs/QUICK_REFERENCE.md`
-- Corners: `ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md`, `ReadMeDocs/SCRIPT_FLOW_DIAGRAM.md`, `ReadMeDocs/SCRIPT_RELATIONSHIPS.md`
+- Corners: `ReadMeDocs/CORNER_PREDICTIONS_GUIDE.md`
 - ML: `ReadMeDocs/ML_MODE_GUIDE.md`
-- Data: `ReadMeDocs/FILE_MANAGEMENT_GUIDE.md`, `ReadMeDocs/AUTOMATION_COMPARISON.md`
+- Data: `ReadMeDocs/FILE_MANAGEMENT_GUIDE.md`, `ReadMeDocs/FIXTURES_DOWNLOAD_GUIDE.md`
 
 Project Cursor rules live in `.cursor/rules/`. Executable workflow skills live in `.cursor/skills/`.
